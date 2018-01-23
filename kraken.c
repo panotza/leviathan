@@ -304,10 +304,10 @@ static int kraken_probe(struct usb_interface *interface, const struct usb_device
 	dev->udev = usb_get_dev(udev);
 	usb_set_intfdata(interface, dev);
 
-	dev->color_message = kmalloc(19*sizeof(u8), GFP_KERNEL);
-	dev->pump_message = kmalloc(2*sizeof(u8), GFP_KERNEL);
-	dev->fan_message = kmalloc(2*sizeof(u8), GFP_KERNEL);
-	dev->status_message = kmalloc(32*sizeof(u8), GFP_KERNEL);
+	dev->color_message = NULL;
+	dev->pump_message = NULL;
+	dev->fan_message = NULL;
+	dev->status_message = NULL;
 	if (
 		(dev->color_message = kmalloc(19*sizeof(u8), GFP_KERNEL)) == NULL ||
 		(dev->pump_message = kmalloc(2*sizeof(u8), GFP_KERNEL)) == NULL ||

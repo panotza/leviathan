@@ -32,13 +32,14 @@ int kraken_probe(struct usb_interface *interface,
 	struct usb_device *udev = interface_to_usbdev(interface);
 
 	struct usb_kraken *kraken = kmalloc(sizeof *kraken, GFP_KERNEL);
-	if (!kraken) {
+	if (kraken == NULL) {
 		goto error_kraken;
 	}
 	kraken->udev = usb_get_dev(udev);
 	usb_set_intfdata(interface, kraken);
 
-	if ((retval = kraken_driver_probe(interface, id))) {
+	retval = kraken_driver_probe(interface, id);
+	if (retval) {
 		goto error_driver_probe;
 	}
 

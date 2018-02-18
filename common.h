@@ -20,6 +20,7 @@ struct usb_kraken {
 	struct usb_interface *interface;
 	struct kraken_driver_data *data;
 
+	ktime_t update_interval;
 	struct hrtimer update_timer;
 	struct workqueue_struct *update_workqueue;
 	struct work_struct update_work;

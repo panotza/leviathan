@@ -75,7 +75,7 @@ static ssize_t serial_no_show(struct device *dev, struct device_attribute *attr,
                               char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	return sprintf(buf, "%s\n", kraken->data->serial_number);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", kraken->data->serial_number);
 }
 
 static DEVICE_ATTR_RO(serial_no);
@@ -84,7 +84,8 @@ static ssize_t temp_liquid_show(struct device *dev,
                                 struct device_attribute *attr, char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	return sprintf(buf, "%u\n", data_liquid_temp(kraken->data));
+	return scnprintf(buf, PAGE_SIZE,
+	                 "%u\n", data_liquid_temp(kraken->data));
 }
 
 static DEVICE_ATTR_RO(temp_liquid);
@@ -93,7 +94,7 @@ static ssize_t fan_rpm_show(struct device *dev, struct device_attribute *attr,
                             char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	return sprintf(buf, "%u\n", data_fan_rpm(kraken->data));
+	return scnprintf(buf, PAGE_SIZE, "%u\n", data_fan_rpm(kraken->data));
 }
 
 static DEVICE_ATTR_RO(fan_rpm);
@@ -102,7 +103,7 @@ static ssize_t pump_rpm_show(struct device *dev, struct device_attribute *attr,
                              char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	return sprintf(buf, "%u\n", data_pump_rpm(kraken->data));
+	return scnprintf(buf, PAGE_SIZE, "%u\n", data_pump_rpm(kraken->data));
 }
 
 static DEVICE_ATTR_RO(pump_rpm);
@@ -111,7 +112,7 @@ static ssize_t unknown_1_show(struct device *dev, struct device_attribute *attr,
                               char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	return sprintf(buf, "%u\n", kraken->data->status[2]);
+	return scnprintf(buf, PAGE_SIZE, "%u\n", kraken->data->status[2]);
 }
 
 // TODO figure out what this is

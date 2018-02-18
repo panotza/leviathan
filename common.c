@@ -12,7 +12,10 @@ static enum hrtimer_restart kraken_update_timer(struct hrtimer *update_timer)
 {
 	struct usb_kraken *kraken
 		= container_of(update_timer, struct usb_kraken, update_timer);
-	queue_work(kraken->update_workqueue, &kraken->update_work);
+	bool ret = queue_work(kraken->update_workqueue, &kraken->update_work);
+	if (!ret) {
+		dev_warn(&kraken->udev->dev, "work already on a queue\n");
+	}
 	hrtimer_forward(update_timer, ktime_get(), ktime_set(1, 0));
 	return HRTIMER_RESTART;
 }

@@ -45,6 +45,12 @@ int kraken_probe(struct usb_interface *interface,
 	if (retval) {
 		goto error_driver_probe;
 	}
+	retval = kraken_driver_create_device_files(interface);
+	if (retval) {
+		dev_err(&interface->dev,
+		        "failed to create device files: %d\n", retval);
+		goto error_create_files;
+	}
 
 	hrtimer_init(&kraken->update_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	kraken->update_timer.function = &kraken_update_timer;
@@ -56,6 +62,8 @@ int kraken_probe(struct usb_interface *interface,
 	INIT_WORK(&kraken->update_work, &kraken_update_work);
 
 	return 0;
+error_create_files:
+	kraken_driver_disconnect(interface);
 error_driver_probe:
 	usb_set_intfdata(interface, NULL);
 	usb_put_dev(kraken->udev);
@@ -72,6 +80,7 @@ void kraken_disconnect(struct usb_interface *interface)
 	destroy_workqueue(kraken->update_workqueue);
 	hrtimer_cancel(&kraken->update_timer);
 
+	kraken_driver_remove_device_files(interface);
 	kraken_driver_disconnect(interface);
 
 	usb_set_intfdata(interface, NULL);

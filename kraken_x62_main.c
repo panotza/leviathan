@@ -118,17 +118,18 @@ static ssize_t unknown_1_show(struct device *dev, struct device_attribute *attr,
 // TODO figure out what this is
 static DEVICE_ATTR_RO(unknown_1);
 
-static int kraken_x62_create_device_files(struct usb_interface *interface)
+int kraken_driver_create_device_files(struct usb_interface *interface)
 {
-	if (device_create_file(&interface->dev, &dev_attr_serial_no))
+	int ret;
+	if ((ret = device_create_file(&interface->dev, &dev_attr_serial_no)))
 		goto error_serial_no;
-	if (device_create_file(&interface->dev, &dev_attr_temp_liquid))
+	if ((ret = device_create_file(&interface->dev, &dev_attr_temp_liquid)))
 		goto error_temp_liquid;
-	if (device_create_file(&interface->dev, &dev_attr_fan_rpm))
+	if ((ret = device_create_file(&interface->dev, &dev_attr_fan_rpm)))
 		goto error_fan_rpm;
-	if (device_create_file(&interface->dev, &dev_attr_pump_rpm))
+	if ((ret = device_create_file(&interface->dev, &dev_attr_pump_rpm)))
 		goto error_pump_rpm;
-	if (device_create_file(&interface->dev, &dev_attr_unknown_1))
+	if ((ret = device_create_file(&interface->dev, &dev_attr_unknown_1)))
 		goto error_unknown_1;
 
 	return 0;
@@ -141,10 +142,10 @@ error_fan_rpm:
 error_temp_liquid:
 	device_remove_file(&interface->dev, &dev_attr_serial_no);
 error_serial_no:
-	return 1;
+	return ret;
 }
 
-static void kraken_x62_remove_device_files(struct usb_interface *interface)
+void kraken_driver_remove_device_files(struct usb_interface *interface)
 {
 	device_remove_file(&interface->dev, &dev_attr_unknown_1);
 	device_remove_file(&interface->dev, &dev_attr_pump_rpm);
@@ -234,13 +235,6 @@ int kraken_driver_probe(struct usb_interface *interface,
 		goto error_init_message;
 	}
 
-	ret = kraken_x62_create_device_files(interface);
-	if (ret) {
-		dev_err(&interface->dev,
-		        "failed to create device files: %d\n", ret);
-		goto error_init_message;
-	}
-
 	dev_info(&interface->dev, "device connected\n");
 
 	return 0;
@@ -254,8 +248,6 @@ void kraken_driver_disconnect(struct usb_interface *interface)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(interface);
 	struct kraken_driver_data *data = kraken->data;
-
-	kraken_x62_remove_device_files(interface);
 
 	kfree(data);
 

@@ -46,7 +46,18 @@ extern void kraken_driver_disconnect(struct usb_interface *interface);
 /**
  * The driver's update function, called every second.
  */
-extern void kraken_driver_update(struct usb_kraken *);
+extern void kraken_driver_update(struct usb_kraken *kraken);
+
+/**
+ * Create driver-specific device attribute files.  Called from kraken_probe().
+ */
+extern int kraken_driver_create_device_files(struct usb_interface *interface);
+
+/**
+ * Remove driver-specific device attribute files.  Called from
+ * kraken_disconnect().
+ */
+extern void kraken_driver_remove_device_files(struct usb_interface *interface);
 
 int kraken_probe(struct usb_interface *interface,
                  const struct usb_device_id *id);

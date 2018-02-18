@@ -255,16 +255,55 @@ static ssize_t show_fan(struct device *dev, struct device_attribute *attr, char 
 
 static DEVICE_ATTR(fan, S_IRUGO, show_fan, NULL);
 
-static void kraken_remove_device_files(struct usb_interface *interface)
+int kraken_driver_create_device_files(struct usb_interface *interface)
 {
-	device_remove_file(&interface->dev, &dev_attr_speed);
-	device_remove_file(&interface->dev, &dev_attr_color);
-	device_remove_file(&interface->dev, &dev_attr_alternate_color);
-	device_remove_file(&interface->dev, &dev_attr_interval);
-	device_remove_file(&interface->dev, &dev_attr_mode);
-	device_remove_file(&interface->dev, &dev_attr_temp);
+	int retval;
+	if ((retval = device_create_file(&interface->dev, &dev_attr_speed)))
+		goto error_speed;
+	if ((retval = device_create_file(&interface->dev, &dev_attr_color)))
+		goto error_color;
+	if ((retval = device_create_file(&interface->dev, &dev_attr_alternate_color)))
+		goto error_alternate_color;
+	if ((retval = device_create_file(&interface->dev, &dev_attr_interval)))
+		goto error_interval;
+	if ((retval = device_create_file(&interface->dev, &dev_attr_mode)))
+		goto error_mode;
+	if ((retval = device_create_file(&interface->dev, &dev_attr_temp)))
+		goto error_temp;
+	if ((retval = device_create_file(&interface->dev, &dev_attr_pump)))
+		goto error_pump;
+	if ((retval = device_create_file(&interface->dev, &dev_attr_fan)))
+		goto error_fan;
+
+	return 0;
+error_fan:
 	device_remove_file(&interface->dev, &dev_attr_pump);
+error_pump:
+	device_remove_file(&interface->dev, &dev_attr_temp);
+error_temp:
+	device_remove_file(&interface->dev, &dev_attr_mode);
+error_mode:
+	device_remove_file(&interface->dev, &dev_attr_interval);
+error_interval:
+	device_remove_file(&interface->dev, &dev_attr_alternate_color);
+error_alternate_color:
+	device_remove_file(&interface->dev, &dev_attr_color);
+error_color:
+	device_remove_file(&interface->dev, &dev_attr_speed);
+error_speed:
+	return retval;
+}
+
+void kraken_driver_remove_device_files(struct usb_interface *interface)
+{
 	device_remove_file(&interface->dev, &dev_attr_fan);
+	device_remove_file(&interface->dev, &dev_attr_pump);
+	device_remove_file(&interface->dev, &dev_attr_temp);
+	device_remove_file(&interface->dev, &dev_attr_mode);
+	device_remove_file(&interface->dev, &dev_attr_interval);
+	device_remove_file(&interface->dev, &dev_attr_alternate_color);
+	device_remove_file(&interface->dev, &dev_attr_color);
+	device_remove_file(&interface->dev, &dev_attr_speed);
 }
 
 int kraken_driver_probe(struct usb_interface *interface, const struct usb_device_id *id)
@@ -291,18 +330,6 @@ int kraken_driver_probe(struct usb_interface *interface, const struct usb_device
 	data->fan_message[0] = 0x12;
 	data->fan_message[1] = 50;
 
-	if (
-		(retval = device_create_file(&interface->dev, &dev_attr_speed)) ||
-		(retval = device_create_file(&interface->dev, &dev_attr_color)) ||
-		(retval = device_create_file(&interface->dev, &dev_attr_alternate_color)) ||
-		(retval = device_create_file(&interface->dev, &dev_attr_interval)) ||
-		(retval = device_create_file(&interface->dev, &dev_attr_mode)) ||
-		(retval = device_create_file(&interface->dev, &dev_attr_temp)) ||
-		(retval = device_create_file(&interface->dev, &dev_attr_pump)) ||
-		(retval = device_create_file(&interface->dev, &dev_attr_fan))
-	)
-		goto error;
-
 	retval = usb_control_msg(kraken->udev, usb_sndctrlpipe(kraken->udev, 0), 2, 0x40, 0x0002, 0, NULL, 0, 1000);
 	if (retval)
 		goto error;
@@ -312,7 +339,6 @@ int kraken_driver_probe(struct usb_interface *interface, const struct usb_device
 
 	return 0;
 error:
-	kraken_remove_device_files(interface);
 	kfree(data);
 error_data:
 	return retval;
@@ -322,8 +348,6 @@ void kraken_driver_disconnect(struct usb_interface *interface)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(interface);
 	struct kraken_driver_data *data = kraken->data;
-
-	kraken_remove_device_files(interface);
 
 	kfree(data);
 

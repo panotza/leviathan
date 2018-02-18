@@ -10,6 +10,10 @@
 #define DRIVER_NAME "kraken"
 
 struct kraken_driver_data {
+	// TODO: it would be nice to protect these messages from data races by
+	// mutexes, like in kraken_x62.  They shouldn't happen frequently, and
+	// it's not exactly a huge problem if they happen, but lack of data
+	// races ought to be an objective for all programs, especially drivers.
 	bool send_color;
 	u8 color_message[19];
 	u8 pump_message[2];

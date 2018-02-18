@@ -3,6 +3,7 @@
 
 #include "common.h"
 
+#include <asm/byteorder.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/usb.h>
@@ -10,46 +11,149 @@
 #define DRIVER_NAME "kraken_x62"
 
 #define DATA_SERIAL_NUMBER_SIZE 65
+#define DATA_STATUS_SIZE        17
+
+const u8 DATA_STATUS_HEADER[] = {
+	0x04,
+};
+const u8 DATA_STATUS_FOOTER[] = {
+	0x00, 0x00, 0x00, 0x78, 0x02, 0x00, 0x01, 0x08, 0x1e, 0x00,
+};
 
 struct kraken_driver_data {
-	char *serial_number;
+	char serial_number[DATA_SERIAL_NUMBER_SIZE];
+	u8 status[DATA_STATUS_SIZE];
 };
 
 void kraken_driver_update(struct usb_kraken *kraken)
 {
 	struct kraken_driver_data *data = kraken->data;
-	// TODO
-	//dev_info(&kraken->udev->dev, "updating...\n");
+
+	int received;
+	int ret = usb_interrupt_msg(
+		kraken->udev, usb_rcvctrlpipe(kraken->udev, 1),
+		data->status, DATA_STATUS_SIZE, &received, 1000);
+	if (ret || received != DATA_STATUS_SIZE) {
+		dev_err(&kraken->udev->dev,
+		        "failed status update: I/O error\n");
+		return;
+	}
+	if (memcmp(data->status + 0, DATA_STATUS_HEADER,
+	           sizeof DATA_STATUS_HEADER) != 0 ||
+	    memcmp(data->status + DATA_STATUS_SIZE - sizeof DATA_STATUS_FOOTER,
+	           DATA_STATUS_FOOTER, sizeof DATA_STATUS_FOOTER) != 0) {
+		char status_hex[DATA_STATUS_SIZE * 3 + 1];
+		char *c = status_hex;
+		size_t i;
+		for (i = 0; i < DATA_STATUS_SIZE; i++) {
+			c += scnprintf(c, status_hex + (sizeof status_hex) - c,
+			               "%02x ", data->status[i]);
+		}
+		dev_warn(&kraken->udev->dev, "illegal status message: %s\n",
+		         status_hex);
+	}
+}
+
+static inline u8 data_liquid_temp(struct kraken_driver_data *data)
+{
+	return data->status[1];
+}
+
+static inline u16 data_fan_rpm(struct kraken_driver_data *data)
+{
+	u16 *rpm_be = (u16 *) (data->status + 3);
+	return be16_to_cpu(*rpm_be);
+}
+
+static inline u16 data_pump_rpm(struct kraken_driver_data *data)
+{
+	u16 *rpm_be = (u16 *) (data->status + 5);
+	return be16_to_cpu(*rpm_be);
 }
 
 static ssize_t serial_no_show(struct device *dev, struct device_attribute *attr,
-                           char *buf)
+                              char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	struct kraken_driver_data *data = kraken->data;
-
-	return sprintf(buf, "%s\n", data->serial_number);
+	return sprintf(buf, "%s\n", kraken->data->serial_number);
 }
 
 static DEVICE_ATTR_RO(serial_no);
 
+static ssize_t temp_liquid_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	return sprintf(buf, "%u\n", data_liquid_temp(kraken->data));
+}
+
+static DEVICE_ATTR_RO(temp_liquid);
+
+static ssize_t fan_rpm_show(struct device *dev, struct device_attribute *attr,
+                            char *buf)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	return sprintf(buf, "%u\n", data_fan_rpm(kraken->data));
+}
+
+static DEVICE_ATTR_RO(fan_rpm);
+
+static ssize_t pump_rpm_show(struct device *dev, struct device_attribute *attr,
+                             char *buf)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	return sprintf(buf, "%u\n", data_pump_rpm(kraken->data));
+}
+
+static DEVICE_ATTR_RO(pump_rpm);
+
+static ssize_t unknown_1_show(struct device *dev, struct device_attribute *attr,
+                              char *buf)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	return sprintf(buf, "%u\n", kraken->data->status[2]);
+}
+
+// TODO figure out what this is
+static DEVICE_ATTR_RO(unknown_1);
 
 static int kraken_x62_create_device_files(struct usb_interface *interface)
 {
 	if (device_create_file(&interface->dev, &dev_attr_serial_no))
 		goto error_serial_no;
-	return 0;
+	if (device_create_file(&interface->dev, &dev_attr_temp_liquid))
+		goto error_temp_liquid;
+	if (device_create_file(&interface->dev, &dev_attr_fan_rpm))
+		goto error_fan_rpm;
+	if (device_create_file(&interface->dev, &dev_attr_pump_rpm))
+		goto error_pump_rpm;
+	if (device_create_file(&interface->dev, &dev_attr_unknown_1))
+		goto error_unknown_1;
 
+	return 0;
+error_unknown_1:
+	device_remove_file(&interface->dev, &dev_attr_pump_rpm);
+error_pump_rpm:
+	device_remove_file(&interface->dev, &dev_attr_fan_rpm);
+error_fan_rpm:
+	device_remove_file(&interface->dev, &dev_attr_temp_liquid);
+error_temp_liquid:
+	device_remove_file(&interface->dev, &dev_attr_serial_no);
 error_serial_no:
 	return 1;
 }
 
 static void kraken_x62_remove_device_files(struct usb_interface *interface)
 {
+	device_remove_file(&interface->dev, &dev_attr_unknown_1);
+	device_remove_file(&interface->dev, &dev_attr_pump_rpm);
+	device_remove_file(&interface->dev, &dev_attr_fan_rpm);
+	device_remove_file(&interface->dev, &dev_attr_temp_liquid);
 	device_remove_file(&interface->dev, &dev_attr_serial_no);
 }
 
-static int kraken_x62_initialize(struct usb_kraken *kraken, char *serial_number)
+static int kraken_x62_initialize(struct usb_kraken *kraken,
+                                 char serial_number[])
 {
 	u8 len;
 	u8 i;
@@ -60,7 +164,7 @@ static int kraken_x62_initialize(struct usb_kraken *kraken, char *serial_number)
 	// Space for length byte, type-of-data byte, and serial number encoded
 	// UTF-16.
 	const size_t data_size = 2 + (DATA_SERIAL_NUMBER_SIZE - 1) * 2;
-	u8 *data = kmalloc(data_size, GFP_KERNEL);
+	u8 *data = kmalloc(data_size, GFP_KERNEL | GFP_DMA);
 	if (data == NULL) {
 		goto error_data;
 	}
@@ -117,16 +221,12 @@ int kraken_driver_probe(struct usb_interface *interface,
 	struct kraken_driver_data *data;
 	struct usb_kraken *kraken = usb_get_intfdata(interface);
 	int ret = -ENOMEM;
-	kraken->data = kmalloc(sizeof *kraken->data, GFP_KERNEL);
+	kraken->data = kmalloc(sizeof *kraken->data, GFP_KERNEL | GFP_DMA);
 	if (kraken->data == NULL) {
 		goto error_data;
 	}
 	data = kraken->data;
 
-	data->serial_number = kmalloc(DATA_SERIAL_NUMBER_SIZE, GFP_KERNEL);
-	if (data->serial_number == NULL) {
-		goto error_serial;
-	}
 	ret = kraken_x62_initialize(kraken, data->serial_number);
 	if (ret) {
 		dev_err(&interface->dev, "failed to initialize: %d\n", ret);
@@ -144,8 +244,6 @@ int kraken_driver_probe(struct usb_interface *interface,
 
 	return 0;
 error_init_message:
-	kfree(data->serial_number);
-error_serial:
 	kfree(data);
 error_data:
 	return ret;
@@ -158,7 +256,6 @@ void kraken_driver_disconnect(struct usb_interface *interface)
 
 	kraken_x62_remove_device_files(interface);
 
-	kfree(data->serial_number);
 	kfree(data);
 
 	dev_info(&interface->dev, "device disconnected\n");

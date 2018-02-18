@@ -11,7 +11,10 @@
 
 struct kraken_driver_data {
 	bool send_color;
-	u8 *color_message, *pump_message, *fan_message, *status_message;
+	u8 color_message[19];
+	u8 pump_message[2];
+	u8 fan_message[2];
+	u8 status_message[32];
 };
 
 static int kraken_start_transaction(struct usb_kraken *kraken)
@@ -269,19 +272,10 @@ int kraken_driver_probe(struct usb_interface *interface, const struct usb_device
 	struct kraken_driver_data *data;
 	struct usb_kraken *kraken = usb_get_intfdata(interface);
 	int retval = -ENOMEM;
-	kraken->data = kzalloc(sizeof *kraken->data, GFP_KERNEL);
+	kraken->data = kmalloc(sizeof *kraken->data, GFP_KERNEL | GFP_DMA);
 	if (!kraken->data)
 		goto error_data;
 	data = kraken->data;
-
-	if (
-		(data->color_message = kmalloc(19*sizeof(u8), GFP_KERNEL)) == NULL ||
-		(data->pump_message = kmalloc(2*sizeof(u8), GFP_KERNEL)) == NULL ||
-		(data->fan_message = kmalloc(2*sizeof(u8), GFP_KERNEL)) == NULL ||
-		(data->status_message = kmalloc(32*sizeof(u8), GFP_KERNEL)) == NULL
-	) {
-		goto error_messages;
-	}
 
 	data->color_message[0] = 0x10;
 	data->color_message[1] = 0x00; data->color_message[2] = 0x00; data->color_message[3] = 0xff;
@@ -319,12 +313,6 @@ int kraken_driver_probe(struct usb_interface *interface, const struct usb_device
 	return 0;
 error:
 	kraken_remove_device_files(interface);
-error_messages:
-	kfree(data->status_message);
-	kfree(data->fan_message);
-	kfree(data->pump_message);
-	kfree(data->color_message);
-
 	kfree(data);
 error_data:
 	return retval;
@@ -336,11 +324,6 @@ void kraken_driver_disconnect(struct usb_interface *interface)
 	struct kraken_driver_data *data = kraken->data;
 
 	kraken_remove_device_files(interface);
-
-	kfree(data->status_message);
-	kfree(data->fan_message);
-	kfree(data->pump_message);
-	kfree(data->color_message);
 
 	kfree(data);
 

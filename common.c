@@ -42,25 +42,25 @@ static DEVICE_ATTR(update_interval, S_IRUGO | S_IWUSR | S_IWGRP,
 
 static int kraken_create_device_files(struct usb_interface *interface)
 {
-	int retval = kraken_driver_create_device_files(interface);
-	if (retval) {
-		return retval;
-	}
-
+	int retval;
 	if ((retval = device_create_file(
 		     &interface->dev, &dev_attr_update_interval)))
 		goto error_update_interval;
+	if ((retval = kraken_driver_create_device_files(interface)))
+		goto error_driver_files;
 
 	return 0;
+error_driver_files:
+	device_remove_file(&interface->dev, &dev_attr_update_interval);
 error_update_interval:
 	return retval;
 }
 
 static void kraken_remove_device_files(struct usb_interface *interface)
 {
-	device_remove_file(&interface->dev, &dev_attr_update_interval);
-
 	kraken_driver_remove_device_files(interface);
+
+	device_remove_file(&interface->dev, &dev_attr_update_interval);
 }
 
 static enum hrtimer_restart kraken_update_timer(struct hrtimer *update_timer)

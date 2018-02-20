@@ -23,16 +23,31 @@ static ssize_t
 update_interval_store(struct device *dev, struct device_attribute *attr,
                       const char *buf, size_t count)
 {
+	ktime_t interval_old;
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 	u64 interval_ms;
 	int ret = kstrtoull(buf, 0, &interval_ms);
 	if (ret) {
 		return ret;
 	}
+	// interval is 0: halt updates
+	if (interval_ms == 0) {
+		hrtimer_cancel(&kraken->update_timer);
+		kraken->update_interval = ktime_set(0, 0);
+		dev_info(dev, "halting updates: interval set to 0\n");
+		return count;
+	}
+	// interval not 0: save interval in kraken
+	interval_old = kraken->update_interval;
 	if (interval_ms < ktime_to_ms(UPDATE_INTERVAL_MIN)) {
 		kraken->update_interval = UPDATE_INTERVAL_MIN;
 	} else {
 		kraken->update_interval = ms_to_ktime(interval_ms);
+	}
+	// and restart updates if they'd been halted
+	if (ktime_compare(interval_old, ktime_set(0, 0)) == 0) {
+		hrtimer_start(&kraken->update_timer, kraken->update_interval,
+		              HRTIMER_MODE_REL);
 	}
 	return count;
 }
@@ -65,10 +80,23 @@ static void kraken_remove_device_files(struct usb_interface *interface)
 
 static enum hrtimer_restart kraken_update_timer(struct hrtimer *update_timer)
 {
+	bool retval;
 	struct usb_kraken *kraken
 		= container_of(update_timer, struct usb_kraken, update_timer);
-	bool ret = queue_work(kraken->update_workqueue, &kraken->update_work);
-	if (!ret) {
+
+	// last update failed: halt updates
+	if (kraken->update_retval) {
+		dev_err(&kraken->udev->dev,
+		        "halting updates: last update failed: %d\n",
+		        kraken->update_retval);
+		kraken->update_retval = 0;
+		kraken->update_interval = ktime_set(0, 0);
+		return HRTIMER_NORESTART;
+	}
+
+	// otherwise: queue new update and restart timer
+	retval = queue_work(kraken->update_workqueue, &kraken->update_work);
+	if (!retval) {
 		dev_warn(&kraken->udev->dev, "work already on a queue\n");
 	}
 	hrtimer_forward(update_timer, ktime_get(), kraken->update_interval);
@@ -79,7 +107,7 @@ static void kraken_update_work(struct work_struct *update_work)
 {
 	struct usb_kraken *kraken
 		= container_of(update_work, struct usb_kraken, update_work);
-	kraken_driver_update(kraken);
+	kraken->update_retval = kraken_driver_update(kraken);
 }
 
 int kraken_probe(struct usb_interface *interface,
@@ -106,6 +134,8 @@ int kraken_probe(struct usb_interface *interface,
 		        "failed to create device files: %d\n", retval);
 		goto error_create_files;
 	}
+
+	kraken->update_retval = 0;
 
 	kraken->update_interval = UPDATE_INTERVAL_DEFAULT;
 	hrtimer_init(&kraken->update_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);

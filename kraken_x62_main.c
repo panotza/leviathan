@@ -87,8 +87,9 @@ static inline int kraken_x62_update_status(struct usb_kraken *kraken,
 			c += scnprintf(c, status_hex + (sizeof status_hex) - c,
 			               "%02x ", data->status_msg[i]);
 		}
-		dev_warn(&kraken->udev->dev,
-		         "received invalid status message: %s\n", status_hex);
+		dev_err(&kraken->udev->dev,
+		        "received invalid status message: %s\n", status_hex);
+		return 1;
 	}
 	return 0;
 }
@@ -117,15 +118,17 @@ static inline int kraken_x62_update_percent(struct usb_kraken *kraken,
 	return 0;
 }
 
-void kraken_driver_update(struct usb_kraken *kraken)
+int kraken_driver_update(struct usb_kraken *kraken)
 {
 	struct kraken_driver_data *data = kraken->data;
 
-	if (kraken_x62_update_status(kraken, data) ||
-	    kraken_x62_update_percent(kraken, &data->percent_fan) ||
-	    kraken_x62_update_percent(kraken, &data->percent_pump)) {
-		return;
+	int ret;
+	if ((ret = kraken_x62_update_status(kraken, data)) ||
+	    (ret = kraken_x62_update_percent(kraken, &data->percent_fan)) ||
+	    (ret = kraken_x62_update_percent(kraken, &data->percent_pump))) {
+		return ret;
 	}
+	return 0;
 }
 
 static inline u8 data_temp_liquid(struct kraken_driver_data *data)

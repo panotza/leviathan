@@ -48,7 +48,7 @@ static int kraken_receive_message(struct usb_kraken *kraken, u8 message[], int e
 	return 0;
 }
 
-void kraken_driver_update(struct usb_kraken *kraken)
+int kraken_driver_update(struct usb_kraken *kraken)
 {
 	int retval = 0;
 	struct kraken_driver_data *data = kraken->data;
@@ -70,6 +70,7 @@ void kraken_driver_update(struct usb_kraken *kraken)
 		   )
 			dev_err(&kraken->udev->dev, "Failed to update: %d\n", retval);
 	}
+	return retval;
 }
 
 static ssize_t show_speed(struct device *dev, struct device_attribute *attr, char *buf)

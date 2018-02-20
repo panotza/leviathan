@@ -20,6 +20,8 @@ struct usb_kraken {
 	struct usb_interface *interface;
 	struct kraken_driver_data *data;
 
+	int update_retval;
+	// a value of ktime_set(0, 0) indicates that updates are halted
 	ktime_t update_interval;
 	struct hrtimer update_timer;
 	struct workqueue_struct *update_workqueue;
@@ -47,7 +49,7 @@ extern void kraken_driver_disconnect(struct usb_interface *interface);
 /**
  * The driver's update function, called every second.
  */
-extern void kraken_driver_update(struct usb_kraken *kraken);
+extern int kraken_driver_update(struct usb_kraken *kraken);
 
 /**
  * Create driver-specific device attribute files.  Called from kraken_probe().

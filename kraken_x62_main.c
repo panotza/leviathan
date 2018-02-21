@@ -7,6 +7,8 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/string.h>
+#include <linux/stringify.h>
 #include <linux/usb.h>
 
 #define DRIVER_NAME "kraken_x62"
@@ -38,6 +40,201 @@ static inline void percent_data_set(struct percent_data *data, u8 percent)
 	mutex_unlock(&data->mutex);
 }
 
+#define LEDS_MSG_SIZE 32
+
+const u8 LEDS_MSG_HEADER[] = {
+	0x02, 0x4c,
+};
+
+static inline void leds_msg_init(u8 *msg)
+{
+	memcpy(msg, LEDS_MSG_HEADER, sizeof LEDS_MSG_HEADER);
+}
+
+enum leds_which {
+	LEDS_WHICH_LOGO = 0b001,
+	LEDS_WHICH_RING = 0b010,
+};
+
+static inline void leds_msg_which(u8 *msg, enum leds_which which)
+{
+	msg[2] &= ~0b111;
+	msg[2] |= (u8) which;
+}
+
+static inline void leds_msg_moving(u8 *msg, bool moving)
+{
+	msg[2] &= ~(0b1 << 3);
+	msg[2] |= ((u8) moving) << 3;
+}
+
+enum leds_direction {
+	LEDS_DIRECTION_CLOCKWISE        = 0b0000,
+	LEDS_DIRECTION_COUNTERCLOCKWISE = 0b0001,
+};
+
+static inline enum leds_direction leds_direction_from_str(const char *str)
+{
+	if (strcasecmp(str, "clockwise") == 0 ||
+	    strcasecmp(str, "forward") == 0) {
+		return LEDS_DIRECTION_CLOCKWISE;
+	} else if (strcasecmp(str, "counterclockwise") == 0 ||
+	           strcasecmp(str, "counter_clockwise") == 0 ||
+	           strcasecmp(str, "anticlockwise") == 0 ||
+	           strcasecmp(str, "anti_clockwise") == 0 ||
+	           strcasecmp(str, "backward") == 0) {
+		return LEDS_DIRECTION_COUNTERCLOCKWISE;
+	} else {
+		return -1;
+	}
+
+}
+
+static inline void leds_msg_direction(u8 *msg, enum leds_direction direction)
+{
+	msg[2] &= ~(0b1111 << 4);
+	msg[2] |= ((u8) direction) << 4;
+}
+
+enum leds_preset {
+	LEDS_PRESET_FIXED            = 0x00,
+	LEDS_PRESET_FADING           = 0x01,
+	LEDS_PRESET_SPECTRUM_WAVE    = 0x02,
+	LEDS_PRESET_MARQUEE          = 0x03,
+	LEDS_PRESET_COVERING_MARQUEE = 0x04,
+	LEDS_PRESET_ALTERNATING      = 0x05,
+	LEDS_PRESET_BREATHING        = 0x06,
+	LEDS_PRESET_PULSE            = 0x07,
+	LEDS_PRESET_TAI_CHI          = 0x08,
+	LEDS_PRESET_WATER_COOLER     = 0x09,
+	LEDS_PRESET_LOAD             = 0x0a,
+};
+
+static inline enum leds_preset leds_preset_from_str(const char *str)
+{
+	if (strcasecmp(str, "fixed") == 0) {
+		return LEDS_PRESET_FIXED;
+	} else if (strcasecmp(str, "fading") == 0) {
+		return LEDS_PRESET_FADING;
+	} else if (strcasecmp(str, "spectrum_wave") == 0) {
+		return LEDS_PRESET_SPECTRUM_WAVE;
+	} else if (strcasecmp(str, "marquee") == 0) {
+		return LEDS_PRESET_MARQUEE;
+	} else if (strcasecmp(str, "covering_marquee") == 0) {
+		return LEDS_PRESET_COVERING_MARQUEE;
+	} else if (strcasecmp(str, "alternating") == 0) {
+		return LEDS_PRESET_ALTERNATING;
+	} else if (strcasecmp(str, "breathing") == 0) {
+		return LEDS_PRESET_BREATHING;
+	} else if (strcasecmp(str, "pulse") == 0) {
+		return LEDS_PRESET_PULSE;
+	} else if (strcasecmp(str, "tai_chi") == 0) {
+		return LEDS_PRESET_TAI_CHI;
+	} else if (strcasecmp(str, "water_cooler") == 0) {
+		return LEDS_PRESET_WATER_COOLER;
+	} else if (strcasecmp(str, "load") == 0) {
+		return LEDS_PRESET_LOAD;
+	} else {
+		return -1;
+	}
+}
+
+static inline void leds_msg_preset(u8 *msg, enum leds_preset preset)
+{
+	msg[3] = (u8) preset;
+}
+
+enum leds_interval {
+	LEDS_INTERVAL_SLOWEST = 0b000,
+	LEDS_INTERVAL_SLOWER  = 0b001,
+	LEDS_INTERVAL_NORMAL  = 0b010,
+	LEDS_INTERVAL_FASTER  = 0b011,
+	LEDS_INTERVAL_FASTEST = 0b100,
+};
+
+static inline enum leds_interval leds_interval_from_str(const char *str)
+{
+	if (strcasecmp(str, "slowest") == 0) {
+		return LEDS_INTERVAL_SLOWEST;
+	} else if (strcasecmp(str, "slower") == 0) {
+		return LEDS_INTERVAL_SLOWER;
+	} else if (strcasecmp(str, "normal") == 0) {
+		return LEDS_INTERVAL_NORMAL;
+	} else if (strcasecmp(str, "faster") == 0) {
+		return LEDS_INTERVAL_FASTER;
+	} else if (strcasecmp(str, "fastest") == 0) {
+		return LEDS_INTERVAL_FASTEST;
+	} else {
+		return -1;
+	}
+}
+
+static inline void leds_msg_interval(u8 *msg, enum leds_interval interval)
+{
+	msg[4] &= ~0b111;
+	msg[4] |= (u8) interval;
+}
+
+static inline void leds_msg_group_size(u8 *msg, u8 group_size)
+{
+	group_size = (group_size - 3) & 0b11;
+	msg[4] &= ~(0b11 << 3);
+	msg[4] |= group_size << 3;
+}
+
+static inline void leds_msg_cycle(u8 *msg, u8 cycle)
+{
+	cycle &= 0b111;
+	msg[4] &= ~(0b111 << 5);
+	msg[4] |= cycle << 5;
+}
+
+struct led_color {
+	u8 red;
+	u8 green;
+	u8 blue;
+};
+
+static inline void leds_msg_color_logo(u8 *msg, const struct led_color *color)
+{
+	// NOTE: the logo color is in GRB format
+	msg[5] = color->green;
+	msg[6] = color->red;
+	msg[7] = color->blue;
+}
+
+static inline void leds_msg_color_ring(u8 *msg, u8 nr,
+                                       const struct led_color *color)
+{
+	u8 *start = msg + 8 + (nr * 3);
+	start[0] = color->red;
+	start[1] = color->green;
+	start[2] = color->blue;
+}
+
+#define LED_CYCLES_MAX 8
+
+struct led_cycles {
+	u8 msgs[LED_CYCLES_MAX][LEDS_MSG_SIZE];
+	// first len messages in msgs are to be sent when updating (0 means do
+	// not update the LEDs)
+	u8 len;
+	struct mutex mutex;
+};
+
+static inline void led_cycles_init(struct led_cycles *cycles,
+                                   enum leds_which which)
+{
+	u8 cycle;
+	for (cycle = 0; cycle < LED_CYCLES_MAX; cycle++) {
+		leds_msg_init(cycles->msgs[cycle]);
+		leds_msg_which(cycles->msgs[cycle], which);
+		leds_msg_cycle(cycles->msgs[cycle], cycle);
+	}
+	cycles->len = 0;
+	mutex_init(&cycles->mutex);
+}
+
 #define DATA_SERIAL_NUMBER_SIZE 65
 #define DATA_STATUS_MSG_SIZE    17
 
@@ -56,7 +253,19 @@ struct kraken_driver_data {
 
 	struct percent_data percent_fan;
 	struct percent_data percent_pump;
+
+	struct led_cycles led_cycles_logo;
+	struct led_cycles led_cycles_ring;
 };
+
+static inline void kraken_driver_data_init(struct kraken_driver_data *data)
+{
+	mutex_init(&data->status_mutex);
+	percent_data_init(&data->percent_fan, 0x00);
+	percent_data_init(&data->percent_pump, 0x40);
+	led_cycles_init(&data->led_cycles_logo, LEDS_WHICH_LOGO);
+	led_cycles_init(&data->led_cycles_ring, LEDS_WHICH_RING);
+}
 
 static inline int kraken_x62_update_status(struct usb_kraken *kraken,
                                            struct kraken_driver_data *data)
@@ -72,7 +281,7 @@ static inline int kraken_x62_update_status(struct usb_kraken *kraken,
 	if (ret || received != DATA_STATUS_MSG_SIZE) {
 		dev_err(&kraken->udev->dev,
 		        "failed status update: I/O error\n");
-		return 1;
+		return ret ? ret : 1;
 	}
 	if (memcmp(data->status_msg + 0, DATA_STATUS_MSG_HEADER,
 	           sizeof DATA_STATUS_MSG_HEADER) != 0 ||
@@ -97,8 +306,7 @@ static inline int kraken_x62_update_status(struct usb_kraken *kraken,
 static inline int kraken_x62_update_percent(struct usb_kraken *kraken,
                                             struct percent_data *data)
 {
-	int sent;
-	int ret;
+	int ret, sent;
 
 	mutex_lock(&data->mutex);
 	if (! data->update) {
@@ -113,8 +321,32 @@ static inline int kraken_x62_update_percent(struct usb_kraken *kraken,
 	if (ret || sent != PERCENT_MSG_SIZE) {
 		dev_err(&kraken->udev->dev,
 		        "failed to set speed percent: I/O error\n");
-		return 1;
+		return ret ? ret : 1;
 	}
+	return 0;
+}
+
+static inline int kraken_x62_update_led_cycles(struct usb_kraken *kraken,
+                                               struct led_cycles *cycles)
+{
+	u8 cycle;
+	int ret, sent;
+
+	mutex_lock(&cycles->mutex);
+	for (cycle = 0; cycle < cycles->len; cycle++) {
+		ret = usb_interrupt_msg(
+			kraken->udev, usb_sndctrlpipe(kraken->udev, 1),
+			cycles->msgs[cycle], LEDS_MSG_SIZE, &sent, 1000);
+		if (ret || sent != LEDS_MSG_SIZE) {
+			cycles->len = 0;
+			mutex_unlock(&cycles->mutex);
+			dev_err(&kraken->udev->dev,
+			        "failed to set LED cycle %u\n", cycle);
+			return ret ? ret : 1;
+		}
+	}
+	cycles->len = 0;
+	mutex_unlock(&cycles->mutex);
 	return 0;
 }
 
@@ -125,7 +357,11 @@ int kraken_driver_update(struct usb_kraken *kraken)
 	int ret;
 	if ((ret = kraken_x62_update_status(kraken, data)) ||
 	    (ret = kraken_x62_update_percent(kraken, &data->percent_fan)) ||
-	    (ret = kraken_x62_update_percent(kraken, &data->percent_pump))) {
+	    (ret = kraken_x62_update_percent(kraken, &data->percent_pump)) ||
+	    (ret = kraken_x62_update_led_cycles(kraken,
+	                                        &data->led_cycles_logo)) ||
+	    (ret = kraken_x62_update_led_cycles(kraken,
+	                                        &data->led_cycles_ring))) {
 		return ret;
 	}
 	return 0;
@@ -275,6 +511,276 @@ pump_percent_store(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR(pump_percent, S_IWUSR | S_IWGRP, NULL, pump_percent_store);
 
+#define WORD_LEN_MAX 64
+
+static inline int leds_store_moving(const char *buf, size_t *pos,
+                                    enum leds_preset preset, bool *moving)
+{
+	char word[WORD_LEN_MAX + 1];
+	size_t scanned;
+	int ret;
+
+	switch (preset) {
+	case LEDS_PRESET_ALTERNATING:
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	                 word, &scanned);
+	*pos += scanned;
+	if (ret != 1) {
+		return ret ? ret : -EINVAL;
+	}
+	ret = kstrtobool(word, moving);
+	return ret;
+}
+
+static inline int
+leds_store_direction(const char *buf, size_t *pos, enum leds_preset preset,
+                     enum leds_direction *direction)
+{
+	char word[WORD_LEN_MAX + 1];
+	size_t scanned;
+	int ret;
+
+	switch (preset) {
+	case LEDS_PRESET_SPECTRUM_WAVE:
+	case LEDS_PRESET_MARQUEE:
+	case LEDS_PRESET_COVERING_MARQUEE:
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	             word, &scanned);
+	*pos += scanned;
+	if (ret != 1) {
+		return ret ? ret : -EINVAL;
+	}
+	*direction = leds_direction_from_str(word);
+	if (*direction < 0) {
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static inline int
+leds_store_interval(const char *buf, size_t *pos, enum leds_preset preset,
+                    enum leds_interval *interval)
+{
+	char word[WORD_LEN_MAX + 1];
+	size_t scanned;
+	int ret;
+
+	switch (preset) {
+	case LEDS_PRESET_FADING:
+	case LEDS_PRESET_SPECTRUM_WAVE:
+	case LEDS_PRESET_MARQUEE:
+	case LEDS_PRESET_COVERING_MARQUEE:
+	case LEDS_PRESET_ALTERNATING:
+	case LEDS_PRESET_BREATHING:
+	case LEDS_PRESET_PULSE:
+	case LEDS_PRESET_TAI_CHI:
+	case LEDS_PRESET_WATER_COOLER:
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	             word, &scanned);
+	*pos += scanned;
+	if (ret != 1) {
+		return ret ? ret : -EINVAL;
+	}
+	*interval = leds_interval_from_str(word);
+	if (*interval < 0) {
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static inline int leds_store_group_size(const char *buf, size_t *pos,
+                                        enum leds_preset preset, u8 *group_size)
+{
+	size_t scanned;
+	int ret;
+
+	switch (preset) {
+	case LEDS_PRESET_MARQUEE:
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	ret = sscanf(buf + *pos, "%hhu%zn", group_size, &scanned);
+	*pos += scanned;
+	if (ret != 1) {
+		return ret ? ret : -EINVAL;
+	}
+	return 0;
+}
+
+static inline int leds_store_color(const char *buf, size_t *pos,
+                                   struct led_color *color)
+{
+	u64 rgb;
+	char word[WORD_LEN_MAX + 1];
+	size_t scanned;
+	int ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	                 word, &scanned);
+	*pos += scanned;
+	if (ret != 1) {
+		return ret ? ret : -EINVAL;
+	}
+	switch (strlen(word)) {
+	case 3:
+		word[6] = '\0';
+		word[5] = word[2];
+		word[4] = word[2];
+		word[3] = word[1];
+		word[2] = word[1];
+		word[1] = word[0];
+		break;
+	case 6:
+		break;
+	default:
+		return -EINVAL;
+	}
+	ret = kstrtoull(word, 16, &rgb);
+	if (ret) {
+		return ret;
+	}
+	color->red   = (rgb >> 16) & 0xff;
+	color->green = (rgb >>  8) & 0xff;
+	color->blue  = (rgb >>  0) & 0xff;
+	return 0;
+}
+
+static inline int leds_store_preset_check_cycles(enum leds_preset preset,
+                                                 u8 cycles)
+{
+	switch (preset) {
+	case LEDS_PRESET_FIXED:
+	case LEDS_PRESET_SPECTRUM_WAVE:
+	case LEDS_PRESET_MARQUEE:
+	case LEDS_PRESET_WATER_COOLER:
+	case LEDS_PRESET_LOAD:
+		return cycles != 1;
+		break;
+	case LEDS_PRESET_ALTERNATING:
+	case LEDS_PRESET_TAI_CHI:
+		return cycles != 2;
+		break;
+	case LEDS_PRESET_FADING:
+	case LEDS_PRESET_COVERING_MARQUEE:
+	case LEDS_PRESET_BREATHING:
+	case LEDS_PRESET_PULSE:
+		return cycles < 1 || cycles > 8;
+		break;
+	default:
+		return 1;
+	}
+}
+
+static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
+                              const char *buf, size_t count)
+{
+	enum leds_preset preset;
+	bool moving;
+	enum leds_direction direction;
+	enum leds_interval interval;
+	struct led_color colors[LED_CYCLES_MAX];
+	char key[WORD_LEN_MAX + 1];
+	u8 group_size, colors_len, i;
+
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	struct led_cycles *cycles = &kraken->data->led_cycles_logo;
+
+	size_t pos = 0;
+	size_t scanned;
+	char preset_str[WORD_LEN_MAX + 1];
+	int ret = sscanf(buf + pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	                 preset_str, &scanned);
+	pos += scanned;
+	if (ret != 1) {
+		return -EINVAL;
+	}
+	preset = leds_preset_from_str(preset_str);
+	if (preset < 0) {
+		return -EINVAL;
+	}
+	switch (preset) {
+	case LEDS_PRESET_FIXED:
+	case LEDS_PRESET_FADING:
+	case LEDS_PRESET_SPECTRUM_WAVE:
+	case LEDS_PRESET_COVERING_MARQUEE:
+	case LEDS_PRESET_BREATHING:
+	case LEDS_PRESET_PULSE:
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	moving = false;
+	direction = LEDS_DIRECTION_CLOCKWISE;
+	interval = LEDS_INTERVAL_NORMAL;
+	group_size = 3;
+	colors_len = 0;
+
+	while ((ret = sscanf(buf + pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	                     key, &scanned)) >= 0) {
+		pos += scanned;
+		if (ret != 1) {
+			return -EINVAL;
+		}
+		if (strcasecmp(key, "moving") == 0) {
+			ret = leds_store_moving(buf, &pos, preset, &moving);
+		} else if (strcasecmp(key, "direction") == 0) {
+			ret = leds_store_direction(buf, &pos, preset,
+			                           &direction);
+		} else if (strcasecmp(key, "interval") == 0) {
+			ret = leds_store_interval(buf, &pos, preset, &interval);
+		} else if (strcasecmp(key, "group_size") == 0) {
+			ret = leds_store_group_size(buf, &pos, preset,
+			                            &group_size);
+		} else if (strcasecmp(key, "color") == 0) {
+			if (colors_len >= LED_CYCLES_MAX) {
+				return -EINVAL;
+			}
+			ret = leds_store_color(buf, &pos,
+			                       &colors[colors_len++]);
+		} else {
+			ret = -EINVAL;
+		}
+		if (ret) {
+			return ret;
+		}
+	}
+	ret = leds_store_preset_check_cycles(preset, colors_len);
+	if (ret) {
+		return ret;
+	}
+
+	mutex_lock(&cycles->mutex);
+	for (i = 0; i < colors_len; i++) {
+		leds_msg_moving(cycles->msgs[i], moving);
+		leds_msg_direction(cycles->msgs[i], direction);
+		leds_msg_preset(cycles->msgs[i], preset);
+		leds_msg_interval(cycles->msgs[i], interval);
+		leds_msg_group_size(cycles->msgs[i], group_size);
+		leds_msg_color_logo(cycles->msgs[i], &colors[i]);
+	}
+	cycles->len = colors_len;
+	mutex_unlock(&cycles->mutex);
+	return 0;
+}
+
+static DEVICE_ATTR(led_logo, S_IWUSR | S_IWGRP, NULL, led_logo_store);
+
 int kraken_driver_create_device_files(struct usb_interface *interface)
 {
 	int ret;
@@ -292,8 +798,12 @@ int kraken_driver_create_device_files(struct usb_interface *interface)
 		goto error_fan_percent;
 	if ((ret = device_create_file(&interface->dev, &dev_attr_pump_percent)))
 		goto error_pump_percent;
+	if ((ret = device_create_file(&interface->dev, &dev_attr_led_logo)))
+		goto error_led_logo;
 
 	return 0;
+error_led_logo:
+	device_remove_file(&interface->dev, &dev_attr_pump_percent);
 error_pump_percent:
 	device_remove_file(&interface->dev, &dev_attr_fan_percent);
 error_fan_percent:
@@ -312,6 +822,7 @@ error_serial_no:
 
 void kraken_driver_remove_device_files(struct usb_interface *interface)
 {
+	device_remove_file(&interface->dev, &dev_attr_led_logo);
 	device_remove_file(&interface->dev, &dev_attr_pump_percent);
 	device_remove_file(&interface->dev, &dev_attr_fan_percent);
 	device_remove_file(&interface->dev, &dev_attr_unknown_1);
@@ -397,9 +908,7 @@ int kraken_driver_probe(struct usb_interface *interface,
 	}
 	data = kraken->data;
 
-	mutex_init(&data->status_mutex);
-	percent_data_init(&data->percent_fan, 0x00);
-	percent_data_init(&data->percent_pump, 0x40);
+	kraken_driver_data_init(data);
 
 	ret = kraken_x62_initialize(kraken, data->serial_number);
 	if (ret) {

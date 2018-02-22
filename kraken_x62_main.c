@@ -25,14 +25,14 @@ struct percent_data {
 	struct mutex mutex;
 };
 
-static inline void percent_data_init(struct percent_data *data, u8 type_byte)
+static void percent_data_init(struct percent_data *data, u8 type_byte)
 {
 	memcpy(data->msg, PERCENT_MSG_HEADER, sizeof PERCENT_MSG_HEADER);
 	data->msg[2] = type_byte;
 	mutex_init(&data->mutex);
 }
 
-static inline void percent_data_set(struct percent_data *data, u8 percent)
+static void percent_data_set(struct percent_data *data, u8 percent)
 {
 	mutex_lock(&data->mutex);
 	data->msg[4] = percent;
@@ -46,7 +46,7 @@ const u8 LEDS_MSG_HEADER[] = {
 	0x02, 0x4c,
 };
 
-static inline void leds_msg_init(u8 *msg)
+static void leds_msg_init(u8 *msg)
 {
 	memcpy(msg, LEDS_MSG_HEADER, sizeof LEDS_MSG_HEADER);
 }
@@ -56,13 +56,13 @@ enum leds_which {
 	LEDS_WHICH_RING = 0b010,
 };
 
-static inline void leds_msg_which(u8 *msg, enum leds_which which)
+static void leds_msg_which(u8 *msg, enum leds_which which)
 {
 	msg[2] &= ~0b111;
 	msg[2] |= (u8) which;
 }
 
-static inline void leds_msg_moving(u8 *msg, bool moving)
+static void leds_msg_moving(u8 *msg, bool moving)
 {
 	msg[2] &= ~(0b1 << 3);
 	msg[2] |= ((u8) moving) << 3;
@@ -73,7 +73,7 @@ enum leds_direction {
 	LEDS_DIRECTION_COUNTERCLOCKWISE = 0b0001,
 };
 
-static inline enum leds_direction leds_direction_from_str(const char *str)
+static enum leds_direction leds_direction_from_str(const char *str)
 {
 	if (strcasecmp(str, "clockwise") == 0 ||
 	    strcasecmp(str, "forward") == 0) {
@@ -90,7 +90,7 @@ static inline enum leds_direction leds_direction_from_str(const char *str)
 
 }
 
-static inline void leds_msg_direction(u8 *msg, enum leds_direction direction)
+static void leds_msg_direction(u8 *msg, enum leds_direction direction)
 {
 	msg[2] &= ~(0b1111 << 4);
 	msg[2] |= ((u8) direction) << 4;
@@ -110,7 +110,7 @@ enum leds_preset {
 	LEDS_PRESET_LOAD             = 0x0a,
 };
 
-static inline enum leds_preset leds_preset_from_str(const char *str)
+static enum leds_preset leds_preset_from_str(const char *str)
 {
 	if (strcasecmp(str, "fixed") == 0) {
 		return LEDS_PRESET_FIXED;
@@ -139,7 +139,7 @@ static inline enum leds_preset leds_preset_from_str(const char *str)
 	}
 }
 
-static inline void leds_msg_preset(u8 *msg, enum leds_preset preset)
+static void leds_msg_preset(u8 *msg, enum leds_preset preset)
 {
 	msg[3] = (u8) preset;
 }
@@ -152,7 +152,7 @@ enum leds_interval {
 	LEDS_INTERVAL_FASTEST = 0b100,
 };
 
-static inline enum leds_interval leds_interval_from_str(const char *str)
+static enum leds_interval leds_interval_from_str(const char *str)
 {
 	if (strcasecmp(str, "slowest") == 0) {
 		return LEDS_INTERVAL_SLOWEST;
@@ -169,20 +169,20 @@ static inline enum leds_interval leds_interval_from_str(const char *str)
 	}
 }
 
-static inline void leds_msg_interval(u8 *msg, enum leds_interval interval)
+static void leds_msg_interval(u8 *msg, enum leds_interval interval)
 {
 	msg[4] &= ~0b111;
 	msg[4] |= (u8) interval;
 }
 
-static inline void leds_msg_group_size(u8 *msg, u8 group_size)
+static void leds_msg_group_size(u8 *msg, u8 group_size)
 {
 	group_size = (group_size - 3) & 0b11;
 	msg[4] &= ~(0b11 << 3);
 	msg[4] |= group_size << 3;
 }
 
-static inline void leds_msg_cycle(u8 *msg, u8 cycle)
+static void leds_msg_cycle(u8 *msg, u8 cycle)
 {
 	cycle &= 0b111;
 	msg[4] &= ~(0b111 << 5);
@@ -195,7 +195,7 @@ struct led_color {
 	u8 blue;
 };
 
-static inline void leds_msg_color_logo(u8 *msg, const struct led_color *color)
+static void leds_msg_color_logo(u8 *msg, const struct led_color *color)
 {
 	// NOTE: the logo color is in GRB format
 	msg[5] = color->green;
@@ -203,8 +203,7 @@ static inline void leds_msg_color_logo(u8 *msg, const struct led_color *color)
 	msg[7] = color->blue;
 }
 
-static inline void leds_msg_color_ring(u8 *msg, u8 nr,
-                                       const struct led_color *color)
+static void leds_msg_color_ring(u8 *msg, u8 nr, const struct led_color *color)
 {
 	u8 *start = msg + 8 + (nr * 3);
 	start[0] = color->red;
@@ -222,8 +221,7 @@ struct led_cycles {
 	struct mutex mutex;
 };
 
-static inline void led_cycles_init(struct led_cycles *cycles,
-                                   enum leds_which which)
+static void led_cycles_init(struct led_cycles *cycles, enum leds_which which)
 {
 	u8 cycle;
 	for (cycle = 0; cycle < LED_CYCLES_MAX; cycle++) {
@@ -258,7 +256,7 @@ struct kraken_driver_data {
 	struct led_cycles led_cycles_ring;
 };
 
-static inline void kraken_driver_data_init(struct kraken_driver_data *data)
+static void kraken_driver_data_init(struct kraken_driver_data *data)
 {
 	mutex_init(&data->status_mutex);
 	percent_data_init(&data->percent_fan, 0x00);
@@ -267,8 +265,8 @@ static inline void kraken_driver_data_init(struct kraken_driver_data *data)
 	led_cycles_init(&data->led_cycles_ring, LEDS_WHICH_RING);
 }
 
-static inline int kraken_x62_update_status(struct usb_kraken *kraken,
-                                           struct kraken_driver_data *data)
+static int kraken_x62_update_status(struct usb_kraken *kraken,
+                                    struct kraken_driver_data *data)
 {
 	int received;
 	int ret;
@@ -299,8 +297,8 @@ static inline int kraken_x62_update_status(struct usb_kraken *kraken,
 	return 0;
 }
 
-static inline int kraken_x62_update_percent(struct usb_kraken *kraken,
-                                            struct percent_data *data)
+static int kraken_x62_update_percent(struct usb_kraken *kraken,
+                                     struct percent_data *data)
 {
 	int ret, sent;
 
@@ -322,8 +320,8 @@ static inline int kraken_x62_update_percent(struct usb_kraken *kraken,
 	return 0;
 }
 
-static inline int kraken_x62_update_led_cycles(struct usb_kraken *kraken,
-                                               struct led_cycles *cycles)
+static int kraken_x62_update_led_cycles(struct usb_kraken *kraken,
+                                        struct led_cycles *cycles)
 {
 	u8 cycle;
 	int ret, sent;
@@ -363,7 +361,7 @@ int kraken_driver_update(struct usb_kraken *kraken)
 	return 0;
 }
 
-static inline u8 data_temp_liquid(struct kraken_driver_data *data)
+static u8 data_temp_liquid(struct kraken_driver_data *data)
 {
 	u8 temp;
 	mutex_lock(&data->status_mutex);
@@ -373,7 +371,7 @@ static inline u8 data_temp_liquid(struct kraken_driver_data *data)
 	return temp;
 }
 
-static inline u16 data_fan_rpm(struct kraken_driver_data *data)
+static u16 data_fan_rpm(struct kraken_driver_data *data)
 {
 	u16 rpm_be;
 	mutex_lock(&data->status_mutex);
@@ -383,7 +381,7 @@ static inline u16 data_fan_rpm(struct kraken_driver_data *data)
 	return be16_to_cpu(rpm_be);
 }
 
-static inline u16 data_pump_rpm(struct kraken_driver_data *data)
+static u16 data_pump_rpm(struct kraken_driver_data *data)
 {
 	u16 rpm_be;
 	mutex_lock(&data->status_mutex);
@@ -394,7 +392,7 @@ static inline u16 data_pump_rpm(struct kraken_driver_data *data)
 }
 
 // TODO figure out what this is
-static inline u8 data_unknown_1(struct kraken_driver_data *data)
+static u8 data_unknown_1(struct kraken_driver_data *data)
 {
 	u8 unknown_1;
 	mutex_lock(&data->status_mutex);
@@ -450,8 +448,7 @@ static ssize_t unknown_1_show(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RO(unknown_1);
 
-static inline int
-percent_from(const char *buf, unsigned int min, unsigned int max)
+static int percent_from(const char *buf, unsigned int min, unsigned int max)
 {
 	unsigned int percent;
 	int ret = kstrtouint(buf, 0, &percent);
@@ -509,8 +506,8 @@ static DEVICE_ATTR(pump_percent, S_IWUSR | S_IWGRP, NULL, pump_percent_store);
 
 #define WORD_LEN_MAX 64
 
-static inline int leds_store_moving(const char *buf, size_t *pos,
-                                    enum leds_preset preset, bool *moving)
+static int leds_store_moving(const char *buf, size_t *pos,
+                             enum leds_preset preset, bool *moving)
 {
 	char word[WORD_LEN_MAX + 1];
 	size_t scanned;
@@ -533,7 +530,7 @@ static inline int leds_store_moving(const char *buf, size_t *pos,
 	return ret;
 }
 
-static inline int
+static int
 leds_store_direction(const char *buf, size_t *pos, enum leds_preset preset,
                      enum leds_direction *direction)
 {
@@ -563,7 +560,7 @@ leds_store_direction(const char *buf, size_t *pos, enum leds_preset preset,
 	return 0;
 }
 
-static inline int
+static int
 leds_store_interval(const char *buf, size_t *pos, enum leds_preset preset,
                     enum leds_interval *interval)
 {
@@ -599,8 +596,8 @@ leds_store_interval(const char *buf, size_t *pos, enum leds_preset preset,
 	return 0;
 }
 
-static inline int leds_store_group_size(const char *buf, size_t *pos,
-                                        enum leds_preset preset, u8 *group_size)
+static int leds_store_group_size(const char *buf, size_t *pos,
+                                 enum leds_preset preset, u8 *group_size)
 {
 	size_t scanned;
 	int ret;
@@ -620,8 +617,8 @@ static inline int leds_store_group_size(const char *buf, size_t *pos,
 	return 0;
 }
 
-static inline int leds_store_color(const char *buf, size_t *pos,
-                                   struct led_color *color)
+static int leds_store_color(const char *buf, size_t *pos,
+                            struct led_color *color)
 {
 	u64 rgb;
 	char word[WORD_LEN_MAX + 1];
@@ -656,8 +653,7 @@ static inline int leds_store_color(const char *buf, size_t *pos,
 	return 0;
 }
 
-static inline int leds_store_preset_check_cycles(enum leds_preset preset,
-                                                 u8 cycles)
+static int leds_store_preset_check_cycles(enum leds_preset preset, u8 cycles)
 {
 	switch (preset) {
 	case LEDS_PRESET_FIXED:

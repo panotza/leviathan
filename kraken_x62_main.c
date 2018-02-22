@@ -468,9 +468,9 @@ static int percent_from(const char *buf, unsigned int min, unsigned int max)
 #define PERCENT_FAN_MAX     100
 #define PERCENT_FAN_DEFAULT  35
 
-static ssize_t
-fan_percent_store(struct device *dev, struct device_attribute *attr,
-                  const char *buf, size_t count)
+static ssize_t fan_percent_store(struct device *dev,
+                                 struct device_attribute *attr, const char *buf,
+                                 size_t count)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 
@@ -488,9 +488,9 @@ static DEVICE_ATTR(fan_percent, S_IWUSR | S_IWGRP, NULL, fan_percent_store);
 #define PERCENT_PUMP_MAX     100
 #define PERCENT_PUMP_DEFAULT  60
 
-static ssize_t
-pump_percent_store(struct device *dev, struct device_attribute *attr,
-                   const char *buf, size_t count)
+static ssize_t pump_percent_store(struct device *dev,
+                                  struct device_attribute *attr,
+                                  const char *buf, size_t count)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 
@@ -506,41 +506,58 @@ static DEVICE_ATTR(pump_percent, S_IWUSR | S_IWGRP, NULL, pump_percent_store);
 
 #define WORD_LEN_MAX 64
 
-static int leds_store_moving(const char *buf, size_t *pos,
-                             enum leds_preset preset, bool *moving)
+static int str_scan_word(const char **buf, char *word)
 {
-	char word[WORD_LEN_MAX + 1];
 	// NOTE: linux's vsscanf() currently contains a bug where conversion
 	// specification 'n' does not take into account length modifiers (such
 	// as in "%zn") when assigning to the corresponding pointer, so we must
 	// use an int in conjunction with "%n" to store the number of scanned
 	// characters
 	int scanned;
+	int ret = sscanf(*buf, "%" __stringify(WORD_LEN_MAX) "s%n",
+	                 word, &scanned);
+	*buf += scanned;
+	// NOTE: linux's vsscanf() currently contains a bug where conversion
+	// specification 's' accepts a buffer with only whitespace in it and
+	// parses it as the empty string; we have to check that the parsed word
+	// is not empty
+	return ret != 1 || word[0] == '\0';
+}
+
+enum leds_store_err {
+	LEDS_STORE_ERR_OK,
+	LEDS_STORE_ERR_PRESET,
+	LEDS_STORE_ERR_NO_VALUE,
+	LEDS_STORE_ERR_INVALID,
+};
+
+static enum leds_store_err leds_store_moving(const char **buf,
+                                             enum leds_preset preset,
+                                             bool *moving)
+{
+	char word[WORD_LEN_MAX + 1];
 	int ret;
 
 	switch (preset) {
 	case LEDS_PRESET_ALTERNATING:
 		break;
 	default:
-		return -EINVAL;
+		return LEDS_STORE_ERR_PRESET;
 	}
 
-	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%n",
-	             word, &scanned);
-	*pos += scanned;
-	if (ret != 1) {
-		return ret ? ret : -EINVAL;
+	ret = str_scan_word(buf, word);
+	if (ret) {
+		return LEDS_STORE_ERR_NO_VALUE;
 	}
 	ret = kstrtobool(word, moving);
-	return ret;
+	return ret ? LEDS_STORE_ERR_INVALID : LEDS_STORE_ERR_OK;
 }
 
-static int
-leds_store_direction(const char *buf, size_t *pos, enum leds_preset preset,
-                     enum leds_direction *direction)
+static enum leds_store_err leds_store_direction(const char **buf,
+                                                enum leds_preset preset,
+                                                enum leds_direction *direction)
 {
 	char word[WORD_LEN_MAX + 1];
-	int scanned;
 	int ret;
 
 	switch (preset) {
@@ -549,28 +566,22 @@ leds_store_direction(const char *buf, size_t *pos, enum leds_preset preset,
 	case LEDS_PRESET_COVERING_MARQUEE:
 		break;
 	default:
-		return -EINVAL;
+		return LEDS_STORE_ERR_PRESET;
 	}
 
-	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%n",
-	             word, &scanned);
-	*pos += scanned;
-	if (ret != 1) {
-		return ret ? ret : -EINVAL;
+	ret = str_scan_word(buf, word);
+	if (ret) {
+		return LEDS_STORE_ERR_NO_VALUE;
 	}
 	*direction = leds_direction_from_str(word);
-	if (*direction < 0) {
-		return -EINVAL;
-	}
-	return 0;
+	return (*direction < 0) ? LEDS_STORE_ERR_INVALID : LEDS_STORE_ERR_OK;
 }
 
-static int
-leds_store_interval(const char *buf, size_t *pos, enum leds_preset preset,
-                    enum leds_interval *interval)
+static enum leds_store_err leds_store_interval(const char **buf,
+                                               enum leds_preset preset,
+                                               enum leds_interval *interval)
 {
 	char word[WORD_LEN_MAX + 1];
-	int scanned;
 	int ret;
 
 	switch (preset) {
@@ -585,24 +596,20 @@ leds_store_interval(const char *buf, size_t *pos, enum leds_preset preset,
 	case LEDS_PRESET_WATER_COOLER:
 		break;
 	default:
-		return -EINVAL;
+		return LEDS_STORE_ERR_PRESET;
 	}
 
-	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%n",
-	             word, &scanned);
-	*pos += scanned;
-	if (ret != 1) {
-		return ret ? ret : -EINVAL;
+	ret = str_scan_word(buf, word);
+	if (ret) {
+		return LEDS_STORE_ERR_NO_VALUE;
 	}
 	*interval = leds_interval_from_str(word);
-	if (*interval < 0) {
-		return -EINVAL;
-	}
-	return 0;
+	return (*interval < 0) ? LEDS_STORE_ERR_INVALID : LEDS_STORE_ERR_OK;
 }
 
-static int leds_store_group_size(const char *buf, size_t *pos,
-                                 enum leds_preset preset, u8 *group_size)
+static enum leds_store_err leds_store_group_size(const char **buf,
+                                                 enum leds_preset preset,
+                                                 u8 *group_size)
 {
 	int scanned;
 	int ret;
@@ -611,28 +618,25 @@ static int leds_store_group_size(const char *buf, size_t *pos,
 	case LEDS_PRESET_MARQUEE:
 		break;
 	default:
-		return -EINVAL;
+		return LEDS_STORE_ERR_PRESET;
 	}
 
-	ret = sscanf(buf + *pos, "%hhu%n", group_size, &scanned);
-	*pos += scanned;
+	ret = sscanf(*buf, "%hhu%n", group_size, &scanned);
+	*buf += scanned;
 	if (ret != 1) {
-		return ret ? ret : -EINVAL;
+		return LEDS_STORE_ERR_INVALID;
 	}
-	return 0;
+	return LEDS_STORE_ERR_OK;
 }
 
-static int leds_store_color(const char *buf, size_t *pos,
-                            struct led_color *color)
+static enum leds_store_err leds_store_color(const char **buf,
+                                            struct led_color *color)
 {
 	u64 rgb;
 	char word[WORD_LEN_MAX + 1];
-	int scanned;
-	int ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%n",
-	                 word, &scanned);
-	*pos += scanned;
-	if (ret != 1) {
-		return ret ? ret : -EINVAL;
+	int ret = str_scan_word(buf, word);
+	if (ret) {
+		return LEDS_STORE_ERR_NO_VALUE;
 	}
 	switch (strlen(word)) {
 	case 3:
@@ -646,19 +650,19 @@ static int leds_store_color(const char *buf, size_t *pos,
 	case 6:
 		break;
 	default:
-		return -EINVAL;
+		return LEDS_STORE_ERR_INVALID;
 	}
 	ret = kstrtoull(word, 16, &rgb);
 	if (ret) {
-		return ret;
+		return LEDS_STORE_ERR_INVALID;
 	}
 	color->red   = (rgb >> 16) & 0xff;
 	color->green = (rgb >>  8) & 0xff;
 	color->blue  = (rgb >>  0) & 0xff;
-	return 0;
+	return LEDS_STORE_ERR_OK;
 }
 
-static int leds_store_preset_check_cycles(enum leds_preset preset, u8 cycles)
+static bool leds_store_preset_cycles_ok(enum leds_preset preset, u8 cycles)
 {
 	switch (preset) {
 	case LEDS_PRESET_FIXED:
@@ -666,26 +670,29 @@ static int leds_store_preset_check_cycles(enum leds_preset preset, u8 cycles)
 	case LEDS_PRESET_MARQUEE:
 	case LEDS_PRESET_WATER_COOLER:
 	case LEDS_PRESET_LOAD:
-		return cycles != 1;
+		return cycles == 1;
 		break;
 	case LEDS_PRESET_ALTERNATING:
 	case LEDS_PRESET_TAI_CHI:
-		return cycles != 2;
+		return cycles == 2;
 		break;
 	case LEDS_PRESET_FADING:
 	case LEDS_PRESET_COVERING_MARQUEE:
 	case LEDS_PRESET_BREATHING:
 	case LEDS_PRESET_PULSE:
-		return cycles < 1 || cycles > 8;
+		return cycles >= 1 && cycles <= 8;
 		break;
 	default:
-		return 1;
+		return false;
 	}
 }
 
 static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
                               const char *buf, size_t count)
 {
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	struct led_cycles *cycles = &kraken->data->led_cycles_logo;
+
 	enum leds_preset preset;
 	bool moving;
 	enum leds_direction direction;
@@ -694,20 +701,15 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	char key[WORD_LEN_MAX + 1];
 	u8 group_size, colors_len, i;
 
-	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	struct led_cycles *cycles = &kraken->data->led_cycles_logo;
-
-	size_t pos = 0;
-	int scanned;
 	char preset_str[WORD_LEN_MAX + 1];
-	int ret = sscanf(buf + pos, "%" __stringify(WORD_LEN_MAX) "s%n",
-	                 preset_str, &scanned);
-	pos += scanned;
-	if (ret != 1) {
+	int ret = str_scan_word(&buf, preset_str);
+	if (ret) {
+		dev_err(dev, "%s: no preset\n", attr->attr.name);
 		return -EINVAL;
 	}
 	preset = leds_preset_from_str(preset_str);
 	if (preset < 0) {
+		dev_err(dev, "%s: invalid preset\n", attr->attr.name);
 		return -EINVAL;
 	}
 	switch (preset) {
@@ -719,6 +721,8 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	case LEDS_PRESET_PULSE:
 		break;
 	default:
+		dev_err(dev, "%s: illegal preset for logo LED\n",
+		        attr->attr.name);
 		return -EINVAL;
 	}
 
@@ -728,38 +732,50 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	group_size = 3;
 	colors_len = 0;
 
-	while ((ret = sscanf(buf + pos, "%" __stringify(WORD_LEN_MAX) "s%n",
-	                     key, &scanned)) >= 0) {
-		pos += scanned;
-		if (ret != 1) {
-			return -EINVAL;
-		}
+	while (str_scan_word(&buf, key)) {
 		if (strcasecmp(key, "moving") == 0) {
-			ret = leds_store_moving(buf, &pos, preset, &moving);
+			ret = leds_store_moving(&buf, preset, &moving);
 		} else if (strcasecmp(key, "direction") == 0) {
-			ret = leds_store_direction(buf, &pos, preset,
-			                           &direction);
+			ret = leds_store_direction(&buf, preset, &direction);
 		} else if (strcasecmp(key, "interval") == 0) {
-			ret = leds_store_interval(buf, &pos, preset, &interval);
+			ret = leds_store_interval(&buf, preset, &interval);
 		} else if (strcasecmp(key, "group_size") == 0) {
-			ret = leds_store_group_size(buf, &pos, preset,
-			                            &group_size);
+			ret = leds_store_group_size(&buf, preset, &group_size);
 		} else if (strcasecmp(key, "color") == 0) {
 			if (colors_len >= LED_CYCLES_MAX) {
+				dev_err(dev, "%s: too many cycles\n",
+				        attr->attr.name);
 				return -EINVAL;
 			}
-			ret = leds_store_color(buf, &pos,
-			                       &colors[colors_len++]);
+			ret = leds_store_color(&buf, &colors[colors_len++]);
 		} else {
-			ret = -EINVAL;
+			dev_err(dev, "%s: invalid key: %s\n",
+			        attr->attr.name, key);
+			return -EINVAL;
 		}
-		if (ret) {
-			return ret;
+		if (ret == LEDS_STORE_ERR_OK) {
+			continue;
 		}
+		switch (ret) {
+		case LEDS_STORE_ERR_PRESET:
+			dev_err(dev, "%s: illegal key for given preset: %s\n",
+			        attr->attr.name, key);
+			break;
+		case LEDS_STORE_ERR_NO_VALUE:
+			dev_err(dev, "%s: no value for key %s\n",
+			        attr->attr.name, key);
+			break;
+		case LEDS_STORE_ERR_INVALID:
+			dev_err(dev, "%s: invalid value for key %s\n",
+			        attr->attr.name, key);
+			break;
+		}
+		return -EINVAL;
 	}
-	ret = leds_store_preset_check_cycles(preset, colors_len);
-	if (ret) {
-		return ret;
+	if (! leds_store_preset_cycles_ok(preset, colors_len)) {
+		dev_err(dev, "%s: invalid number of cycles for given preset\n",
+		        attr->attr.name);
+		return -EINVAL;
 	}
 
 	mutex_lock(&cycles->mutex);
@@ -773,7 +789,7 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	}
 	cycles->len = colors_len;
 	mutex_unlock(&cycles->mutex);
-	return 0;
+	return count;
 }
 
 static DEVICE_ATTR(led_logo, S_IWUSR | S_IWGRP, NULL, led_logo_store);

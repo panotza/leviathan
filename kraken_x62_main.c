@@ -510,7 +510,12 @@ static int leds_store_moving(const char *buf, size_t *pos,
                              enum leds_preset preset, bool *moving)
 {
 	char word[WORD_LEN_MAX + 1];
-	size_t scanned;
+	// NOTE: linux's vsscanf() currently contains a bug where conversion
+	// specification 'n' does not take into account length modifiers (such
+	// as in "%zn") when assigning to the corresponding pointer, so we must
+	// use an int in conjunction with "%n" to store the number of scanned
+	// characters
+	int scanned;
 	int ret;
 
 	switch (preset) {
@@ -520,8 +525,8 @@ static int leds_store_moving(const char *buf, size_t *pos,
 		return -EINVAL;
 	}
 
-	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
-	                 word, &scanned);
+	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%n",
+	             word, &scanned);
 	*pos += scanned;
 	if (ret != 1) {
 		return ret ? ret : -EINVAL;
@@ -535,7 +540,7 @@ leds_store_direction(const char *buf, size_t *pos, enum leds_preset preset,
                      enum leds_direction *direction)
 {
 	char word[WORD_LEN_MAX + 1];
-	size_t scanned;
+	int scanned;
 	int ret;
 
 	switch (preset) {
@@ -547,7 +552,7 @@ leds_store_direction(const char *buf, size_t *pos, enum leds_preset preset,
 		return -EINVAL;
 	}
 
-	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%n",
 	             word, &scanned);
 	*pos += scanned;
 	if (ret != 1) {
@@ -565,7 +570,7 @@ leds_store_interval(const char *buf, size_t *pos, enum leds_preset preset,
                     enum leds_interval *interval)
 {
 	char word[WORD_LEN_MAX + 1];
-	size_t scanned;
+	int scanned;
 	int ret;
 
 	switch (preset) {
@@ -583,7 +588,7 @@ leds_store_interval(const char *buf, size_t *pos, enum leds_preset preset,
 		return -EINVAL;
 	}
 
-	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%n",
 	             word, &scanned);
 	*pos += scanned;
 	if (ret != 1) {
@@ -599,7 +604,7 @@ leds_store_interval(const char *buf, size_t *pos, enum leds_preset preset,
 static int leds_store_group_size(const char *buf, size_t *pos,
                                  enum leds_preset preset, u8 *group_size)
 {
-	size_t scanned;
+	int scanned;
 	int ret;
 
 	switch (preset) {
@@ -609,7 +614,7 @@ static int leds_store_group_size(const char *buf, size_t *pos,
 		return -EINVAL;
 	}
 
-	ret = sscanf(buf + *pos, "%hhu%zn", group_size, &scanned);
+	ret = sscanf(buf + *pos, "%hhu%n", group_size, &scanned);
 	*pos += scanned;
 	if (ret != 1) {
 		return ret ? ret : -EINVAL;
@@ -622,8 +627,8 @@ static int leds_store_color(const char *buf, size_t *pos,
 {
 	u64 rgb;
 	char word[WORD_LEN_MAX + 1];
-	size_t scanned;
-	int ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	int scanned;
+	int ret = sscanf(buf + *pos, "%" __stringify(WORD_LEN_MAX) "s%n",
 	                 word, &scanned);
 	*pos += scanned;
 	if (ret != 1) {
@@ -693,9 +698,9 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	struct led_cycles *cycles = &kraken->data->led_cycles_logo;
 
 	size_t pos = 0;
-	size_t scanned;
+	int scanned;
 	char preset_str[WORD_LEN_MAX + 1];
-	int ret = sscanf(buf + pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	int ret = sscanf(buf + pos, "%" __stringify(WORD_LEN_MAX) "s%n",
 	                 preset_str, &scanned);
 	pos += scanned;
 	if (ret != 1) {
@@ -723,7 +728,7 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	group_size = 3;
 	colors_len = 0;
 
-	while ((ret = sscanf(buf + pos, "%" __stringify(WORD_LEN_MAX) "s%zn",
+	while ((ret = sscanf(buf + pos, "%" __stringify(WORD_LEN_MAX) "s%n",
 	                     key, &scanned)) >= 0) {
 		pos += scanned;
 		if (ret != 1) {

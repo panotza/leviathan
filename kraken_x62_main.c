@@ -290,12 +290,8 @@ static inline int kraken_x62_update_status(struct usb_kraken *kraken,
 	           DATA_STATUS_MSG_FOOTER,
 	           sizeof DATA_STATUS_MSG_FOOTER) != 0) {
 		char status_hex[DATA_STATUS_MSG_SIZE * 3 + 1];
-		char *c = status_hex;
-		size_t i;
-		for (i = 0; i < DATA_STATUS_MSG_SIZE; i++) {
-			c += scnprintf(c, status_hex + (sizeof status_hex) - c,
-			               "%02x ", data->status_msg[i]);
-		}
+		hex_dump_to_buffer(data->status_msg, DATA_STATUS_MSG_SIZE, 32, 1,
+		                   status_hex, sizeof status_hex, false);
 		dev_err(&kraken->udev->dev,
 		        "received invalid status message: %s\n", status_hex);
 		return 1;

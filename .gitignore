@@ -1,0 +1,11 @@
+# Generic module build files
+*.ko
+*.ko.cmd
+*.mod.c
+*.o
+*.o.cmd
+
+# Module build files for project
+/.tmp_versions/
+/Module.symvers
+/modules.order

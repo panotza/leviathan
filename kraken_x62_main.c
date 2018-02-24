@@ -73,21 +73,22 @@ enum leds_direction {
 	LEDS_DIRECTION_COUNTERCLOCKWISE = 0b0001,
 };
 
-static enum leds_direction leds_direction_from_str(const char *str)
+static int leds_direction_from_str(enum leds_direction *direction,
+                                   const char *str)
 {
 	if (strcasecmp(str, "clockwise") == 0 ||
 	    strcasecmp(str, "forward") == 0) {
-		return LEDS_DIRECTION_CLOCKWISE;
+		*direction = LEDS_DIRECTION_CLOCKWISE;
 	} else if (strcasecmp(str, "counterclockwise") == 0 ||
 	           strcasecmp(str, "counter_clockwise") == 0 ||
 	           strcasecmp(str, "anticlockwise") == 0 ||
 	           strcasecmp(str, "anti_clockwise") == 0 ||
 	           strcasecmp(str, "backward") == 0) {
-		return LEDS_DIRECTION_COUNTERCLOCKWISE;
+		*direction = LEDS_DIRECTION_COUNTERCLOCKWISE;
 	} else {
-		return -1;
+		return 1;
 	}
-
+	return 0;
 }
 
 static void leds_msg_direction(u8 *msg, enum leds_direction direction)
@@ -110,33 +111,34 @@ enum leds_preset {
 	LEDS_PRESET_LOAD             = 0x0a,
 };
 
-static enum leds_preset leds_preset_from_str(const char *str)
+static int leds_preset_from_str(enum leds_preset *preset, const char *str)
 {
 	if (strcasecmp(str, "fixed") == 0) {
-		return LEDS_PRESET_FIXED;
+		*preset = LEDS_PRESET_FIXED;
 	} else if (strcasecmp(str, "fading") == 0) {
-		return LEDS_PRESET_FADING;
+		*preset = LEDS_PRESET_FADING;
 	} else if (strcasecmp(str, "spectrum_wave") == 0) {
-		return LEDS_PRESET_SPECTRUM_WAVE;
+		*preset = LEDS_PRESET_SPECTRUM_WAVE;
 	} else if (strcasecmp(str, "marquee") == 0) {
-		return LEDS_PRESET_MARQUEE;
+		*preset = LEDS_PRESET_MARQUEE;
 	} else if (strcasecmp(str, "covering_marquee") == 0) {
-		return LEDS_PRESET_COVERING_MARQUEE;
+		*preset = LEDS_PRESET_COVERING_MARQUEE;
 	} else if (strcasecmp(str, "alternating") == 0) {
-		return LEDS_PRESET_ALTERNATING;
+		*preset = LEDS_PRESET_ALTERNATING;
 	} else if (strcasecmp(str, "breathing") == 0) {
-		return LEDS_PRESET_BREATHING;
+		*preset = LEDS_PRESET_BREATHING;
 	} else if (strcasecmp(str, "pulse") == 0) {
-		return LEDS_PRESET_PULSE;
+		*preset = LEDS_PRESET_PULSE;
 	} else if (strcasecmp(str, "tai_chi") == 0) {
-		return LEDS_PRESET_TAI_CHI;
+		*preset = LEDS_PRESET_TAI_CHI;
 	} else if (strcasecmp(str, "water_cooler") == 0) {
-		return LEDS_PRESET_WATER_COOLER;
+		*preset = LEDS_PRESET_WATER_COOLER;
 	} else if (strcasecmp(str, "load") == 0) {
-		return LEDS_PRESET_LOAD;
+		*preset = LEDS_PRESET_LOAD;
 	} else {
-		return -1;
+		return 1;
 	}
+	return 0;
 }
 
 static void leds_msg_preset(u8 *msg, enum leds_preset preset)
@@ -152,21 +154,22 @@ enum leds_interval {
 	LEDS_INTERVAL_FASTEST = 0b100,
 };
 
-static enum leds_interval leds_interval_from_str(const char *str)
+static int leds_interval_from_str(enum leds_interval *interval, const char *str)
 {
 	if (strcasecmp(str, "slowest") == 0) {
-		return LEDS_INTERVAL_SLOWEST;
+		*interval = LEDS_INTERVAL_SLOWEST;
 	} else if (strcasecmp(str, "slower") == 0) {
-		return LEDS_INTERVAL_SLOWER;
+		*interval = LEDS_INTERVAL_SLOWER;
 	} else if (strcasecmp(str, "normal") == 0) {
-		return LEDS_INTERVAL_NORMAL;
+		*interval = LEDS_INTERVAL_NORMAL;
 	} else if (strcasecmp(str, "faster") == 0) {
-		return LEDS_INTERVAL_FASTER;
+		*interval = LEDS_INTERVAL_FASTER;
 	} else if (strcasecmp(str, "fastest") == 0) {
-		return LEDS_INTERVAL_FASTEST;
+		*interval = LEDS_INTERVAL_FASTEST;
 	} else {
-		return -1;
+		return 1;
 	}
+	return 0;
 }
 
 static void leds_msg_interval(u8 *msg, enum leds_interval interval)
@@ -573,8 +576,8 @@ static enum leds_store_err leds_store_direction(const char **buf,
 	if (ret) {
 		return LEDS_STORE_ERR_NO_VALUE;
 	}
-	*direction = leds_direction_from_str(word);
-	return (*direction < 0) ? LEDS_STORE_ERR_INVALID : LEDS_STORE_ERR_OK;
+	ret = leds_direction_from_str(direction, word);
+	return ret ? LEDS_STORE_ERR_INVALID : LEDS_STORE_ERR_OK;
 }
 
 static enum leds_store_err leds_store_interval(const char **buf,
@@ -603,8 +606,8 @@ static enum leds_store_err leds_store_interval(const char **buf,
 	if (ret) {
 		return LEDS_STORE_ERR_NO_VALUE;
 	}
-	*interval = leds_interval_from_str(word);
-	return (*interval < 0) ? LEDS_STORE_ERR_INVALID : LEDS_STORE_ERR_OK;
+	ret = leds_interval_from_str(interval, word);
+	return ret ? LEDS_STORE_ERR_INVALID : LEDS_STORE_ERR_OK;
 }
 
 static enum leds_store_err leds_store_group_size(const char **buf,
@@ -707,8 +710,8 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 		dev_err(dev, "%s: no preset\n", attr->attr.name);
 		return -EINVAL;
 	}
-	preset = leds_preset_from_str(preset_str);
-	if (preset < 0) {
+	ret = leds_preset_from_str(&preset, preset_str);
+	if (ret) {
 		dev_err(dev, "%s: invalid preset\n", attr->attr.name);
 		return -EINVAL;
 	}

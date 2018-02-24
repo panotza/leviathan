@@ -732,7 +732,7 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	group_size = 3;
 	colors_len = 0;
 
-	while (str_scan_word(&buf, key)) {
+	while (! str_scan_word(&buf, key)) {
 		if (strcasecmp(key, "moving") == 0) {
 			ret = leds_store_moving(&buf, preset, &moving);
 		} else if (strcasecmp(key, "direction") == 0) {

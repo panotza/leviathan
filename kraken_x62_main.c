@@ -830,8 +830,14 @@ static enum leds_store_err led_logo_store_color(struct leds_store *store,
 {
 	struct led_color *cycle_colors = store->rest;
 	char word[WORD_LEN_MAX + 1];
+	int ret;
 
-	int ret = str_scan_word(buf, word);
+	if (store->cycles == LED_CYCLES_MAX) {
+		dev_err(store->dev, "%s: more than %u cycles\n",
+		        store->attr->attr.name, LED_CYCLES_MAX);
+		return LEDS_STORE_ERR_INVALID;
+	}
+	ret = str_scan_word(buf, word);
 	if (ret) {
 		return LEDS_STORE_ERR_NO_VALUE;
 	}

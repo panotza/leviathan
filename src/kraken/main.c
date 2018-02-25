@@ -1,7 +1,7 @@
 /* Driver for 2433:b200 devices.
  */
 
-#include "common.h"
+#include "../common.h"
 
 #include <linux/module.h>
 #include <linux/slab.h>

@@ -1,7 +1,7 @@
 /* Driver for 1e71:170e devices.
  */
 
-#include "common.h"
+#include "../common.h"
 
 #include <asm/byteorder.h>
 #include <linux/module.h>

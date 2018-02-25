@@ -570,8 +570,8 @@ struct leds_store {
 	struct device *dev;
 	struct device_attribute *attr;
 
-	enum leds_preset preset;
 	u8 cycles;
+	enum leds_preset preset;
 	bool moving;
 	enum leds_direction direction;
 	enum leds_interval interval;
@@ -902,6 +902,79 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR(led_logo, S_IWUSR | S_IWGRP, NULL, led_logo_store);
 
+static enum leds_store_err leds_ring_store_colors(struct leds_store *store,
+                                                  const char **buf)
+{
+	// NOTE: this is a pointer to arrays of size LEDS_MSG_RING_COLORS; a
+	// pointer to pointer to struct doesn't work here because store->rest
+	// points to a 2-dimensional array, not an array of pointers
+	struct led_color (*cycle_colors)[LEDS_MSG_RING_COLORS] = store->rest;
+	char word[WORD_LEN_MAX + 1];
+	size_t i;
+	int ret;
+
+	if (store->cycles == LED_CYCLES_MAX) {
+		dev_err(store->dev, "%s: more than %u cycles\n",
+		        store->attr->attr.name, LED_CYCLES_MAX);
+		return LEDS_STORE_ERR_INVALID;
+	}
+	for (i = 0; i < LEDS_MSG_RING_COLORS; i++) {
+		ret = str_scan_word(buf, word);
+		if (ret) {
+			return (i == 0) ? LEDS_STORE_ERR_NO_VALUE
+				: LEDS_STORE_ERR_INVALID;
+		}
+		ret = led_color_from_str(&cycle_colors[store->cycles][i], word);
+		if (ret) {
+			return LEDS_STORE_ERR_INVALID;
+		}
+	}
+	store->cycles++;
+	return LEDS_STORE_OK;
+}
+
+static ssize_t leds_ring_store(struct device *dev,
+                               struct device_attribute *attr, const char *buf,
+                               size_t count)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	struct led_cycles *cycles = &kraken->data->led_cycles_ring;
+
+	size_t i;
+	int ret;
+	const char *keys[] = {
+		"colors",               NULL,
+	};
+	leds_store_key_fun *key_funs[] = {
+		leds_ring_store_colors, NULL,
+	};
+	struct led_color cycle_colors[LED_CYCLES_MAX][LEDS_MSG_RING_COLORS];
+	struct leds_store store;
+	leds_store_init(&store, dev, attr, cycle_colors);
+
+	ret = leds_store_preset(&store, &buf);
+	if (ret) {
+		return -EINVAL;
+	}
+	// ring LEDs may be set to any of the presets
+
+	ret = leds_store_keys(&store, &buf, keys, key_funs);
+	if (ret) {
+		return -EINVAL;
+	}
+
+	mutex_lock(&cycles->mutex);
+	for (i = 0; i < store.cycles; i++) {
+		leds_store_to_msg(&store, cycles->msgs[i]);
+		leds_msg_colors_ring(cycles->msgs[i], cycle_colors[i]);
+	}
+	cycles->len = store.cycles;
+	mutex_unlock(&cycles->mutex);
+	return count;
+}
+
+static DEVICE_ATTR(leds_ring, S_IWUSR | S_IWGRP, NULL, leds_ring_store);
+
 int kraken_driver_create_device_files(struct usb_interface *interface)
 {
 	int ret;
@@ -921,8 +994,12 @@ int kraken_driver_create_device_files(struct usb_interface *interface)
 		goto error_pump_percent;
 	if ((ret = device_create_file(&interface->dev, &dev_attr_led_logo)))
 		goto error_led_logo;
+	if ((ret = device_create_file(&interface->dev, &dev_attr_leds_ring)))
+		goto error_leds_ring;
 
 	return 0;
+error_leds_ring:
+	device_remove_file(&interface->dev, &dev_attr_led_logo);
 error_led_logo:
 	device_remove_file(&interface->dev, &dev_attr_pump_percent);
 error_pump_percent:
@@ -943,6 +1020,7 @@ error_serial_no:
 
 void kraken_driver_remove_device_files(struct usb_interface *interface)
 {
+	device_remove_file(&interface->dev, &dev_attr_leds_ring);
 	device_remove_file(&interface->dev, &dev_attr_led_logo);
 	device_remove_file(&interface->dev, &dev_attr_pump_percent);
 	device_remove_file(&interface->dev, &dev_attr_fan_percent);

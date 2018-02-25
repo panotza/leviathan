@@ -198,6 +198,40 @@ struct led_color {
 	u8 blue;
 };
 
+static int led_color_from_str(struct led_color *color, const char *str)
+{
+	char hex[7];
+	unsigned long long rgb;
+	int ret;
+	switch (strlen(str)) {
+	case 3:
+		// RGB, representing RRGGBB
+		hex[0] = str[0];
+		hex[1] = str[0];
+		hex[2] = str[1];
+		hex[3] = str[1];
+		hex[4] = str[2];
+		hex[5] = str[2];
+		break;
+	case 6:
+		// RrGgBb
+		memcpy(hex, str, 6);
+		break;
+	default:
+		return 1;
+	}
+	hex[6] = '\0';
+
+	ret = kstrtoull(hex, 16, &rgb);
+	if (ret) {
+		return ret;
+	}
+	color->red   = (rgb >> 16) & 0xff;
+	color->green = (rgb >>  8) & 0xff;
+	color->blue  = (rgb >>  0) & 0xff;
+	return 0;
+}
+
 static void leds_msg_color_logo(u8 *msg, const struct led_color *color)
 {
 	// NOTE: the logo color is in GRB format
@@ -206,12 +240,17 @@ static void leds_msg_color_logo(u8 *msg, const struct led_color *color)
 	msg[7] = color->blue;
 }
 
-static void leds_msg_color_ring(u8 *msg, u8 nr, const struct led_color *color)
+#define LEDS_MSG_RING_COLORS 8
+
+static void leds_msg_colors_ring(u8 *msg, const struct led_color *colors)
 {
-	u8 *start = msg + 8 + (nr * 3);
-	start[0] = color->red;
-	start[1] = color->green;
-	start[2] = color->blue;
+	size_t i;
+	for (i = 0; i < LEDS_MSG_RING_COLORS; i++) {
+		u8 *start = msg + 8 + (i * 3);
+		start[0] = colors[i].red;
+		start[1] = colors[i].green;
+		start[2] = colors[i].blue;
+	}
 }
 
 #define LED_CYCLES_MAX 8
@@ -527,21 +566,61 @@ static int str_scan_word(const char **buf, char *word)
 	return ret != 1 || word[0] == '\0';
 }
 
+struct leds_store {
+	struct device *dev;
+	struct device_attribute *attr;
+
+	enum leds_preset preset;
+	u8 cycles;
+	bool moving;
+	enum leds_direction direction;
+	enum leds_interval interval;
+	u8 group_size;
+
+	void *rest;
+};
+
+static void leds_store_init(struct leds_store *store, struct device *dev,
+                            struct device_attribute *attr, void *rest)
+{
+	store->dev = dev;
+	store->attr = attr;
+
+	store->cycles = 0;
+	store->moving = false;
+	store->direction = LEDS_DIRECTION_CLOCKWISE;
+	store->interval = LEDS_INTERVAL_NORMAL;
+	store->group_size = 3;
+
+	store->rest = rest;
+}
+
+static void leds_store_to_msg(struct leds_store *store, u8 *leds_msg)
+{
+	leds_msg_preset(leds_msg, store->preset);
+	leds_msg_moving(leds_msg, store->moving);
+	leds_msg_direction(leds_msg, store->direction);
+	leds_msg_interval(leds_msg, store->interval);
+	leds_msg_group_size(leds_msg, store->group_size);
+}
+
 enum leds_store_err {
-	LEDS_STORE_ERR_OK,
+	LEDS_STORE_OK,
 	LEDS_STORE_ERR_PRESET,
 	LEDS_STORE_ERR_NO_VALUE,
 	LEDS_STORE_ERR_INVALID,
 };
 
-static enum leds_store_err leds_store_moving(const char **buf,
-                                             enum leds_preset preset,
-                                             bool *moving)
+typedef enum leds_store_err leds_store_key_fun(struct leds_store *store,
+                                               const char **buf);
+
+static enum leds_store_err leds_store_moving(struct leds_store *store,
+                                             const char **buf)
 {
 	char word[WORD_LEN_MAX + 1];
 	int ret;
 
-	switch (preset) {
+	switch (store->preset) {
 	case LEDS_PRESET_ALTERNATING:
 		break;
 	default:
@@ -552,18 +631,17 @@ static enum leds_store_err leds_store_moving(const char **buf,
 	if (ret) {
 		return LEDS_STORE_ERR_NO_VALUE;
 	}
-	ret = kstrtobool(word, moving);
-	return ret ? LEDS_STORE_ERR_INVALID : LEDS_STORE_ERR_OK;
+	ret = kstrtobool(word, &store->moving);
+	return ret ? LEDS_STORE_ERR_INVALID : LEDS_STORE_OK;
 }
 
-static enum leds_store_err leds_store_direction(const char **buf,
-                                                enum leds_preset preset,
-                                                enum leds_direction *direction)
+static enum leds_store_err leds_store_direction(struct leds_store *store,
+                                                const char **buf)
 {
 	char word[WORD_LEN_MAX + 1];
 	int ret;
 
-	switch (preset) {
+	switch (store->preset) {
 	case LEDS_PRESET_SPECTRUM_WAVE:
 	case LEDS_PRESET_MARQUEE:
 	case LEDS_PRESET_COVERING_MARQUEE:
@@ -576,18 +654,17 @@ static enum leds_store_err leds_store_direction(const char **buf,
 	if (ret) {
 		return LEDS_STORE_ERR_NO_VALUE;
 	}
-	ret = leds_direction_from_str(direction, word);
-	return ret ? LEDS_STORE_ERR_INVALID : LEDS_STORE_ERR_OK;
+	ret = leds_direction_from_str(&store->direction, word);
+	return ret ? LEDS_STORE_ERR_INVALID : LEDS_STORE_OK;
 }
 
-static enum leds_store_err leds_store_interval(const char **buf,
-                                               enum leds_preset preset,
-                                               enum leds_interval *interval)
+static enum leds_store_err leds_store_interval(struct leds_store *store,
+                                               const char **buf)
 {
 	char word[WORD_LEN_MAX + 1];
 	int ret;
 
-	switch (preset) {
+	switch (store->preset) {
 	case LEDS_PRESET_FADING:
 	case LEDS_PRESET_SPECTRUM_WAVE:
 	case LEDS_PRESET_MARQUEE:
@@ -606,88 +683,164 @@ static enum leds_store_err leds_store_interval(const char **buf,
 	if (ret) {
 		return LEDS_STORE_ERR_NO_VALUE;
 	}
-	ret = leds_interval_from_str(interval, word);
-	return ret ? LEDS_STORE_ERR_INVALID : LEDS_STORE_ERR_OK;
+	ret = leds_interval_from_str(&store->interval, word);
+	return ret ? LEDS_STORE_ERR_INVALID : LEDS_STORE_OK;
 }
 
-static enum leds_store_err leds_store_group_size(const char **buf,
-                                                 enum leds_preset preset,
-                                                 u8 *group_size)
+static enum leds_store_err leds_store_group_size(struct leds_store *store,
+                                                 const char **buf)
 {
 	int scanned;
 	int ret;
 
-	switch (preset) {
+	switch (store->preset) {
 	case LEDS_PRESET_MARQUEE:
 		break;
 	default:
 		return LEDS_STORE_ERR_PRESET;
 	}
 
-	ret = sscanf(*buf, "%hhu%n", group_size, &scanned);
+	ret = sscanf(*buf, "%hhu%n", &store->group_size, &scanned);
 	*buf += scanned;
 	if (ret != 1) {
 		return LEDS_STORE_ERR_INVALID;
 	}
-	return LEDS_STORE_ERR_OK;
+	return LEDS_STORE_OK;
 }
 
-static enum leds_store_err leds_store_color(const char **buf,
-                                            struct led_color *color)
-{
-	u64 rgb;
-	char word[WORD_LEN_MAX + 1];
-	int ret = str_scan_word(buf, word);
-	if (ret) {
-		return LEDS_STORE_ERR_NO_VALUE;
-	}
-	switch (strlen(word)) {
-	case 3:
-		word[6] = '\0';
-		word[5] = word[2];
-		word[4] = word[2];
-		word[3] = word[1];
-		word[2] = word[1];
-		word[1] = word[0];
-		break;
-	case 6:
-		break;
-	default:
-		return LEDS_STORE_ERR_INVALID;
-	}
-	ret = kstrtoull(word, 16, &rgb);
-	if (ret) {
-		return LEDS_STORE_ERR_INVALID;
-	}
-	color->red   = (rgb >> 16) & 0xff;
-	color->green = (rgb >>  8) & 0xff;
-	color->blue  = (rgb >>  0) & 0xff;
-	return LEDS_STORE_ERR_OK;
-}
+const char * const LEDS_STORE_KEYS_COMMON[] = {
+	"moving",
+	"direction",
+	"interval",
+	"group_size",
+	NULL,
+};
 
-static bool leds_store_preset_cycles_ok(enum leds_preset preset, u8 cycles)
+leds_store_key_fun * const LEDS_STORE_KEY_FUNS_COMMON[] = {
+	leds_store_moving,
+	leds_store_direction,
+	leds_store_interval,
+	leds_store_group_size,
+	NULL,
+};
+
+static int leds_store_check_cycles_with_preset(struct leds_store *store)
 {
-	switch (preset) {
+	bool ok = false;
+	switch (store->preset) {
 	case LEDS_PRESET_FIXED:
 	case LEDS_PRESET_SPECTRUM_WAVE:
 	case LEDS_PRESET_MARQUEE:
 	case LEDS_PRESET_WATER_COOLER:
 	case LEDS_PRESET_LOAD:
-		return cycles == 1;
+		ok = store->cycles == 1;
 		break;
 	case LEDS_PRESET_ALTERNATING:
 	case LEDS_PRESET_TAI_CHI:
-		return cycles == 2;
+		ok = store->cycles == 2;
 		break;
 	case LEDS_PRESET_FADING:
 	case LEDS_PRESET_COVERING_MARQUEE:
 	case LEDS_PRESET_BREATHING:
 	case LEDS_PRESET_PULSE:
-		return cycles >= 1 && cycles <= 8;
+		ok = store->cycles >= 1 && store->cycles <= LED_CYCLES_MAX;
 		break;
-	default:
-		return false;
 	}
+	if (! ok) {
+		dev_err(store->dev,
+		        "%s: invalid number of cycles for given preset: %d\n",
+		        store->attr->attr.name, store->cycles);
+	}
+	return !ok;
+}
+
+static int leds_store_keys(struct leds_store *store, const char **buf,
+                           const char **keys, leds_store_key_fun **key_funs)
+{
+	char key[WORD_LEN_MAX + 1];
+	size_t i;
+	int ret;
+
+	while (! str_scan_word(buf, key)) {
+		leds_store_key_fun *key_fun = NULL;
+
+		for (i = 0; LEDS_STORE_KEYS_COMMON[i] != NULL; i++) {
+			if (strcmp(LEDS_STORE_KEYS_COMMON[i], key) == 0) {
+				key_fun = LEDS_STORE_KEY_FUNS_COMMON[i];
+				break;
+			}
+		}
+		if (key_fun == NULL) {
+			for (i = 0; keys[i] != NULL; i++) {
+				if (strcmp(keys[i], key) == 0) {
+					key_fun = key_funs[i];
+					break;
+				}
+			}
+		}
+		if (key_fun == NULL) {
+			dev_err(store->dev, "%s: unknown key: %s\n",
+			        store->attr->attr.name, key);
+			return 1;
+		}
+
+		ret = key_fun(store, buf);
+		switch (ret) {
+		case LEDS_STORE_OK:
+			continue;
+		case LEDS_STORE_ERR_PRESET:
+			dev_err(store->dev,
+			        "%s: illegal key for given preset: %s\n",
+			        store->attr->attr.name, key);
+			break;
+		case LEDS_STORE_ERR_NO_VALUE:
+			dev_err(store->dev, "%s: no value for key %s\n",
+			        store->attr->attr.name, key);
+			break;
+		case LEDS_STORE_ERR_INVALID:
+			dev_err(store->dev, "%s: invalid value for key %s\n",
+			        store->attr->attr.name, key);
+			break;
+		}
+		return 1;
+	}
+	ret = leds_store_check_cycles_with_preset(store);
+	return ret;
+}
+
+static int leds_store_preset(struct leds_store *store, const char **buf)
+{
+	char preset_str[WORD_LEN_MAX + 1];
+	int ret = str_scan_word(buf, preset_str);
+	if (ret) {
+		dev_err(store->dev, "%s: no preset\n", store->attr->attr.name);
+		return ret;
+	}
+	ret = leds_preset_from_str(&store->preset, preset_str);
+	if (ret) {
+		dev_err(store->dev, "%s: invalid preset: %s\n",
+		        store->attr->attr.name, preset_str);
+		return ret;
+	}
+	return 0;
+}
+
+static enum leds_store_err led_logo_store_color(struct leds_store *store,
+                                                const char **buf)
+{
+	struct led_color *cycle_colors = store->rest;
+	char word[WORD_LEN_MAX + 1];
+
+	int ret = str_scan_word(buf, word);
+	if (ret) {
+		return LEDS_STORE_ERR_NO_VALUE;
+	}
+	ret = led_color_from_str(&cycle_colors[store->cycles], word);
+	if (ret) {
+		return LEDS_STORE_ERR_INVALID;
+	}
+	store->cycles++;
+	return LEDS_STORE_OK;
 }
 
 static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
@@ -696,26 +849,23 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 	struct led_cycles *cycles = &kraken->data->led_cycles_logo;
 
-	enum leds_preset preset;
-	bool moving;
-	enum leds_direction direction;
-	enum leds_interval interval;
-	struct led_color colors[LED_CYCLES_MAX];
-	char key[WORD_LEN_MAX + 1];
-	u8 group_size, colors_len, i;
+	size_t i;
+	int ret;
+	const char *keys[] = {
+		"color",              NULL,
+	};
+	leds_store_key_fun *key_funs[] = {
+		led_logo_store_color, NULL,
+	};
+	struct led_color cycle_colors[LED_CYCLES_MAX];
+	struct leds_store store;
+	leds_store_init(&store, dev, attr, cycle_colors);
 
-	char preset_str[WORD_LEN_MAX + 1];
-	int ret = str_scan_word(&buf, preset_str);
+	ret = leds_store_preset(&store, &buf);
 	if (ret) {
-		dev_err(dev, "%s: no preset\n", attr->attr.name);
 		return -EINVAL;
 	}
-	ret = leds_preset_from_str(&preset, preset_str);
-	if (ret) {
-		dev_err(dev, "%s: invalid preset\n", attr->attr.name);
-		return -EINVAL;
-	}
-	switch (preset) {
+	switch (store.preset) {
 	case LEDS_PRESET_FIXED:
 	case LEDS_PRESET_FADING:
 	case LEDS_PRESET_SPECTRUM_WAVE:
@@ -729,68 +879,17 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 	}
 
-	moving = false;
-	direction = LEDS_DIRECTION_CLOCKWISE;
-	interval = LEDS_INTERVAL_NORMAL;
-	group_size = 3;
-	colors_len = 0;
-
-	while (! str_scan_word(&buf, key)) {
-		if (strcasecmp(key, "moving") == 0) {
-			ret = leds_store_moving(&buf, preset, &moving);
-		} else if (strcasecmp(key, "direction") == 0) {
-			ret = leds_store_direction(&buf, preset, &direction);
-		} else if (strcasecmp(key, "interval") == 0) {
-			ret = leds_store_interval(&buf, preset, &interval);
-		} else if (strcasecmp(key, "group_size") == 0) {
-			ret = leds_store_group_size(&buf, preset, &group_size);
-		} else if (strcasecmp(key, "color") == 0) {
-			if (colors_len >= LED_CYCLES_MAX) {
-				dev_err(dev, "%s: too many cycles\n",
-				        attr->attr.name);
-				return -EINVAL;
-			}
-			ret = leds_store_color(&buf, &colors[colors_len++]);
-		} else {
-			dev_err(dev, "%s: invalid key: %s\n",
-			        attr->attr.name, key);
-			return -EINVAL;
-		}
-		if (ret == LEDS_STORE_ERR_OK) {
-			continue;
-		}
-		switch (ret) {
-		case LEDS_STORE_ERR_PRESET:
-			dev_err(dev, "%s: illegal key for given preset: %s\n",
-			        attr->attr.name, key);
-			break;
-		case LEDS_STORE_ERR_NO_VALUE:
-			dev_err(dev, "%s: no value for key %s\n",
-			        attr->attr.name, key);
-			break;
-		case LEDS_STORE_ERR_INVALID:
-			dev_err(dev, "%s: invalid value for key %s\n",
-			        attr->attr.name, key);
-			break;
-		}
-		return -EINVAL;
-	}
-	if (! leds_store_preset_cycles_ok(preset, colors_len)) {
-		dev_err(dev, "%s: invalid number of cycles for given preset\n",
-		        attr->attr.name);
+	ret = leds_store_keys(&store, &buf, keys, key_funs);
+	if (ret) {
 		return -EINVAL;
 	}
 
 	mutex_lock(&cycles->mutex);
-	for (i = 0; i < colors_len; i++) {
-		leds_msg_moving(cycles->msgs[i], moving);
-		leds_msg_direction(cycles->msgs[i], direction);
-		leds_msg_preset(cycles->msgs[i], preset);
-		leds_msg_interval(cycles->msgs[i], interval);
-		leds_msg_group_size(cycles->msgs[i], group_size);
-		leds_msg_color_logo(cycles->msgs[i], &colors[i]);
+	for (i = 0; i < store.cycles; i++) {
+		leds_store_to_msg(&store, cycles->msgs[i]);
+		leds_msg_color_logo(cycles->msgs[i], &cycle_colors[i]);
 	}
-	cycles->len = colors_len;
+	cycles->len = store.cycles;
 	mutex_unlock(&cycles->mutex);
 	return count;
 }

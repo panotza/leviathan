@@ -16,7 +16,7 @@ const u8 LED_MSG_HEADER[] = {
 
 static void led_msg_init(struct led_msg *msg)
 {
-	memcpy(msg->msg, LED_MSG_HEADER, sizeof LED_MSG_HEADER);
+	memcpy(msg->msg, LED_MSG_HEADER, sizeof(LED_MSG_HEADER));
 }
 
 static void led_msg_which(struct led_msg *msg, enum led_which which)
@@ -35,17 +35,16 @@ static int led_direction_from_str(enum led_direction *direction,
                                   const char *str)
 {
 	if (strcasecmp(str, "clockwise") == 0 ||
-	    strcasecmp(str, "forward") == 0) {
+	    strcasecmp(str, "forward") == 0)
 		*direction = LED_DIRECTION_CLOCKWISE;
-	} else if (strcasecmp(str, "counterclockwise") == 0 ||
+	else if (strcasecmp(str, "counterclockwise") == 0 ||
 	           strcasecmp(str, "counter_clockwise") == 0 ||
 	           strcasecmp(str, "anticlockwise") == 0 ||
 	           strcasecmp(str, "anti_clockwise") == 0 ||
-	           strcasecmp(str, "backward") == 0) {
+	           strcasecmp(str, "backward") == 0)
 		*direction = LED_DIRECTION_COUNTERCLOCKWISE;
-	} else {
+	else
 		return 1;
-	}
 	return 0;
 }
 
@@ -57,31 +56,30 @@ static void led_msg_direction(struct led_msg *msg, enum led_direction direction)
 
 static int led_preset_from_str(enum led_preset *preset, const char *str)
 {
-	if (strcasecmp(str, "fixed") == 0) {
+	if (strcasecmp(str, "fixed") == 0)
 		*preset = LED_PRESET_FIXED;
-	} else if (strcasecmp(str, "fading") == 0) {
+	else if (strcasecmp(str, "fading") == 0)
 		*preset = LED_PRESET_FADING;
-	} else if (strcasecmp(str, "spectrum_wave") == 0) {
+	else if (strcasecmp(str, "spectrum_wave") == 0)
 		*preset = LED_PRESET_SPECTRUM_WAVE;
-	} else if (strcasecmp(str, "marquee") == 0) {
+	else if (strcasecmp(str, "marquee") == 0)
 		*preset = LED_PRESET_MARQUEE;
-	} else if (strcasecmp(str, "covering_marquee") == 0) {
+	else if (strcasecmp(str, "covering_marquee") == 0)
 		*preset = LED_PRESET_COVERING_MARQUEE;
-	} else if (strcasecmp(str, "alternating") == 0) {
+	else if (strcasecmp(str, "alternating") == 0)
 		*preset = LED_PRESET_ALTERNATING;
-	} else if (strcasecmp(str, "breathing") == 0) {
+	else if (strcasecmp(str, "breathing") == 0)
 		*preset = LED_PRESET_BREATHING;
-	} else if (strcasecmp(str, "pulse") == 0) {
+	else if (strcasecmp(str, "pulse") == 0)
 		*preset = LED_PRESET_PULSE;
-	} else if (strcasecmp(str, "tai_chi") == 0) {
+	else if (strcasecmp(str, "tai_chi") == 0)
 		*preset = LED_PRESET_TAI_CHI;
-	} else if (strcasecmp(str, "water_cooler") == 0) {
+	else if (strcasecmp(str, "water_cooler") == 0)
 		*preset = LED_PRESET_WATER_COOLER;
-	} else if (strcasecmp(str, "load") == 0) {
+	else if (strcasecmp(str, "load") == 0)
 		*preset = LED_PRESET_LOAD;
-	} else {
+	else
 		return 1;
-	}
 	return 0;
 }
 
@@ -92,19 +90,18 @@ static void led_msg_preset(struct led_msg *msg, enum led_preset preset)
 
 static int led_interval_from_str(enum led_interval *interval, const char *str)
 {
-	if (strcasecmp(str, "slowest") == 0) {
+	if (strcasecmp(str, "slowest") == 0)
 		*interval = LED_INTERVAL_SLOWEST;
-	} else if (strcasecmp(str, "slower") == 0) {
+	else if (strcasecmp(str, "slower") == 0)
 		*interval = LED_INTERVAL_SLOWER;
-	} else if (strcasecmp(str, "normal") == 0) {
+	else if (strcasecmp(str, "normal") == 0)
 		*interval = LED_INTERVAL_NORMAL;
-	} else if (strcasecmp(str, "faster") == 0) {
+	else if (strcasecmp(str, "faster") == 0)
 		*interval = LED_INTERVAL_FASTER;
-	} else if (strcasecmp(str, "fastest") == 0) {
+	else if (strcasecmp(str, "fastest") == 0)
 		*interval = LED_INTERVAL_FASTEST;
-	} else {
+	else
 		return 1;
-	}
 	return 0;
 }
 
@@ -153,9 +150,8 @@ int led_color_from_str(struct led_color *color, const char *str)
 	hex[6] = '\0';
 
 	ret = kstrtoul(hex, 16, &rgb);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	color->red   = (rgb >> 16) & 0xff;
 	color->green = (rgb >>  8) & 0xff;
 	color->blue  = (rgb >>  0) & 0xff;
@@ -254,9 +250,8 @@ static enum led_parser_ret led_parser_key_moving(struct led_parser *parser,
 	}
 
 	ret = str_scan_word(buf, word);
-	if (ret) {
+	if (ret)
 		return LED_PARSER_RET_NO_VALUE;
-	}
 	ret = kstrtobool(word, &parser->moving);
 	return ret ? LED_PARSER_RET_INVALID : LED_PARSER_RET_OK;
 }
@@ -277,9 +272,8 @@ static enum led_parser_ret led_parser_key_direction(struct led_parser *parser,
 	}
 
 	ret = str_scan_word(buf, word);
-	if (ret) {
+	if (ret)
 		return LED_PARSER_RET_NO_VALUE;
-	}
 	ret = led_direction_from_str(&parser->direction, word);
 	return ret ? LED_PARSER_RET_INVALID : LED_PARSER_RET_OK;
 }
@@ -306,9 +300,8 @@ static enum led_parser_ret led_parser_key_interval(struct led_parser *parser,
 	}
 
 	ret = str_scan_word(buf, word);
-	if (ret) {
+	if (ret)
 		return LED_PARSER_RET_NO_VALUE;
-	}
 	ret = led_interval_from_str(&parser->interval, word);
 	return ret ? LED_PARSER_RET_INVALID : LED_PARSER_RET_OK;
 }
@@ -328,9 +321,8 @@ static enum led_parser_ret led_parser_key_group_size(struct led_parser *parser,
 
 	ret = sscanf(*buf, "%hhu%n", &parser->group_size, &scanned);
 	*buf += scanned;
-	if (ret != 1) {
+	if (ret != 1)
 		return LED_PARSER_RET_INVALID;
-	}
 	return LED_PARSER_RET_OK;
 }
 
@@ -373,11 +365,10 @@ static int led_parser_check_cycles(struct led_parser *parser)
 			parser->cycles <= LED_DATA_CYCLES_SIZE;
 		break;
 	}
-	if (! ok) {
+	if (!ok)
 		dev_err(parser->dev,
 		        "%s: invalid number of cycles for given preset: %d\n",
 		        parser->attr->attr.name, parser->cycles);
-	}
 	return !ok;
 }
 
@@ -388,7 +379,7 @@ int led_parser_keys(struct led_parser *parser, const char **buf,
 	size_t i;
 	int ret;
 
-	while (! str_scan_word(buf, key)) {
+	while (!str_scan_word(buf, key)) {
 		led_parser_key_fn *key_fn = NULL;
 
 		for (i = 0; LED_PARSER_KEYS_COMMON[i] != NULL; i++) {

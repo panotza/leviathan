@@ -77,12 +77,12 @@ int kraken_x62_update_status(struct usb_kraken *kraken,
 		        "failed status update: I/O error\n");
 		return ret ? ret : 1;
 	}
-	if (memcmp(data->msg + 0, MSG_HEADER, sizeof MSG_HEADER) != 0 ||
-	    memcmp(data->msg + STATUS_DATA_MSG_SIZE - sizeof MSG_FOOTER,
-	           MSG_FOOTER, sizeof MSG_FOOTER) != 0) {
+	if (memcmp(data->msg + 0, MSG_HEADER, sizeof(MSG_HEADER)) != 0 ||
+	    memcmp(data->msg + STATUS_DATA_MSG_SIZE - sizeof(MSG_FOOTER),
+	           MSG_FOOTER, sizeof(MSG_FOOTER)) != 0) {
 		char status_hex[STATUS_DATA_MSG_SIZE * 3 + 1];
 		hex_dump_to_buffer(data->msg, STATUS_DATA_MSG_SIZE, 32, 1,
-		                   status_hex, sizeof status_hex, false);
+		                   status_hex, sizeof(status_hex), false);
 		dev_err(&kraken->udev->dev,
 		        "received invalid status message: %s\n", status_hex);
 		return 1;

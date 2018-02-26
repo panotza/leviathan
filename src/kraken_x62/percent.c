@@ -10,7 +10,7 @@ const u8 PERCENT_MSG_HEADER[] = {
 
 void percent_data_init(struct percent_data *data, u8 type_byte)
 {
-	memcpy(data->msg, PERCENT_MSG_HEADER, sizeof PERCENT_MSG_HEADER);
+	memcpy(data->msg, PERCENT_MSG_HEADER, sizeof(PERCENT_MSG_HEADER));
 	data->msg[2] = type_byte;
 	mutex_init(&data->mutex);
 }
@@ -29,7 +29,7 @@ int kraken_x62_update_percent(struct usb_kraken *kraken,
 	int ret, sent;
 
 	mutex_lock(&data->mutex);
-	if (! data->update) {
+	if (!data->update) {
 		mutex_unlock(&data->mutex);
 		return 0;
 	}
@@ -50,14 +50,11 @@ int percent_from(const char *buf, unsigned int min, unsigned int max)
 {
 	unsigned int percent;
 	int ret = kstrtouint(buf, 0, &percent);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
-	if (percent < min) {
+	if (percent < min)
 		return min;
-	}
-	if (percent > max) {
+	if (percent > max)
 		return max;
-	}
 	return percent;
 }

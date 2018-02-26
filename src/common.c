@@ -27,9 +27,8 @@ update_interval_store(struct device *dev, struct device_attribute *attr,
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 	u64 interval_ms;
 	int ret = kstrtoull(buf, 0, &interval_ms);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	// interval is 0: halt updates
 	if (interval_ms == 0) {
 		hrtimer_cancel(&kraken->update_timer);
@@ -39,16 +38,14 @@ update_interval_store(struct device *dev, struct device_attribute *attr,
 	}
 	// interval not 0: save interval in kraken
 	interval_old = kraken->update_interval;
-	if (interval_ms < ktime_to_ms(UPDATE_INTERVAL_MIN)) {
+	if (interval_ms < ktime_to_ms(UPDATE_INTERVAL_MIN))
 		kraken->update_interval = UPDATE_INTERVAL_MIN;
-	} else {
+	else
 		kraken->update_interval = ms_to_ktime(interval_ms);
-	}
 	// and restart updates if they'd been halted
-	if (ktime_compare(interval_old, ktime_set(0, 0)) == 0) {
+	if (ktime_compare(interval_old, ktime_set(0, 0)) == 0)
 		hrtimer_start(&kraken->update_timer, kraken->update_interval,
 		              HRTIMER_MODE_REL);
-	}
 	return count;
 }
 
@@ -96,9 +93,8 @@ static enum hrtimer_restart kraken_update_timer(struct hrtimer *update_timer)
 
 	// otherwise: queue new update and restart timer
 	retval = queue_work(kraken->update_workqueue, &kraken->update_work);
-	if (!retval) {
+	if (!retval)
 		dev_warn(&kraken->udev->dev, "work already on a queue\n");
-	}
 	hrtimer_forward(update_timer, ktime_get(), kraken->update_interval);
 	return HRTIMER_RESTART;
 }
@@ -117,17 +113,15 @@ int kraken_probe(struct usb_interface *interface,
 	int retval = -ENOMEM;
 	struct usb_device *udev = interface_to_usbdev(interface);
 
-	struct usb_kraken *kraken = kmalloc(sizeof *kraken, GFP_KERNEL);
-	if (kraken == NULL) {
+	struct usb_kraken *kraken = kmalloc(sizeof(*kraken), GFP_KERNEL);
+	if (kraken == NULL)
 		goto error_kraken;
-	}
 	kraken->udev = usb_get_dev(udev);
 	usb_set_intfdata(interface, kraken);
 
 	retval = kraken_driver_probe(interface, id);
-	if (retval) {
+	if (retval)
 		goto error_driver_probe;
-	}
 	retval = kraken_create_device_files(interface);
 	if (retval) {
 		dev_err(&interface->dev,
@@ -143,7 +137,7 @@ int kraken_probe(struct usb_interface *interface,
 	hrtimer_start(&kraken->update_timer, kraken->update_interval,
 	              HRTIMER_MODE_REL);
 
-	snprintf(workqueue_name, sizeof workqueue_name,
+	snprintf(workqueue_name, sizeof(workqueue_name),
 	         "%s_up", kraken_driver_name);
 	kraken->update_workqueue
 		= create_singlethread_workqueue(workqueue_name);

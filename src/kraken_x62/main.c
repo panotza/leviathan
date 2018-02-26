@@ -57,9 +57,8 @@ int kraken_driver_update(struct usb_kraken *kraken)
 	    (ret = kraken_x62_update_percent(kraken, &data->percent_fan)) ||
 	    (ret = kraken_x62_update_percent(kraken, &data->percent_pump)) ||
 	    (ret = kraken_x62_update_led(kraken, &data->led_logo)) ||
-	    (ret = kraken_x62_update_led(kraken, &data->leds_ring))) {
+	    (ret = kraken_x62_update_led(kraken, &data->leds_ring)))
 		return ret;
-	}
 	return 0;
 }
 
@@ -120,9 +119,8 @@ static ssize_t fan_percent_store(struct device *dev,
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 
 	int percent = percent_from(buf, PERCENT_FAN_MIN, PERCENT_FAN_MAX);
-	if (percent < 0) {
+	if (percent < 0)
 		return percent;
-	}
 	percent_data_set(&kraken->data->percent_fan, percent);
 	return count;
 }
@@ -136,9 +134,8 @@ static ssize_t pump_percent_store(struct device *dev,
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 
 	int percent = percent_from(buf, PERCENT_PUMP_MIN, PERCENT_PUMP_MAX);
-	if (percent < 0) {
+	if (percent < 0)
 		return percent;
-	}
 	percent_data_set(&kraken->data->percent_pump, percent);
 	return count;
 }
@@ -158,13 +155,11 @@ static enum led_parser_ret led_parser_key_color(struct led_parser *parser,
 		return LED_PARSER_RET_INVALID;
 	}
 	ret = str_scan_word(buf, word);
-	if (ret) {
+	if (ret)
 		return LED_PARSER_RET_NO_VALUE;
-	}
 	ret = led_color_from_str(&cycle_colors[parser->cycles], word);
-	if (ret) {
+	if (ret)
 		return LED_PARSER_RET_INVALID;
-	}
 	parser->cycles++;
 	return LED_PARSER_RET_OK;
 }
@@ -188,9 +183,8 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	led_parser_init(&parser, dev, attr, cycle_colors);
 
 	ret = led_parser_preset(&parser, &buf);
-	if (ret) {
+	if (ret)
 		return -EINVAL;
-	}
 	switch (parser.preset) {
 	case LED_PRESET_FIXED:
 	case LED_PRESET_FADING:
@@ -206,9 +200,8 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	}
 
 	ret = led_parser_keys(&parser, &buf, keys, key_fns);
-	if (ret) {
+	if (ret)
 		return -EINVAL;
-	}
 
 	mutex_lock(&led_data->mutex);
 	for (i = 0; i < parser.cycles; i++) {
@@ -242,14 +235,12 @@ static enum led_parser_ret led_parser_key_colors(struct led_parser *parser,
 	colors = cycle_colors[parser->cycles];
 	for (i = 0; i < LED_MSG_COLORS_RING; i++) {
 		ret = str_scan_word(buf, word);
-		if (ret) {
+		if (ret)
 			return (i == 0) ? LED_PARSER_RET_NO_VALUE
 				: LED_PARSER_RET_INVALID;
-		}
 		ret = led_color_from_str(&colors[i], word);
-		if (ret) {
+		if (ret)
 			return LED_PARSER_RET_INVALID;
-		}
 	}
 	parser->cycles++;
 	return LED_PARSER_RET_OK;
@@ -276,15 +267,13 @@ static ssize_t leds_ring_store(struct device *dev,
 	led_parser_init(&parser, dev, attr, cycle_colors);
 
 	ret = led_parser_preset(&parser, &buf);
-	if (ret) {
+	if (ret)
 		return -EINVAL;
-	}
 	// ring LEDs may be set to any of the presets
 
 	ret = led_parser_keys(&parser, &buf, keys, key_fns);
-	if (ret) {
+	if (ret)
 		return -EINVAL;
-	}
 
 	mutex_lock(&led_data->mutex);
 	for (i = 0; i < parser.cycles; i++) {
@@ -367,9 +356,8 @@ static int kraken_x62_initialize(struct usb_kraken *kraken,
 	// UTF-16.
 	const size_t data_size = 2 + (DATA_SERIAL_NUMBER_SIZE - 1) * 2;
 	u8 *data = kmalloc(data_size, GFP_KERNEL | GFP_DMA);
-	if (data == NULL) {
+	if (data == NULL)
 		goto error_data;
-	}
 
 	ret = usb_control_msg(
 		kraken->udev, usb_rcvctrlpipe(kraken->udev, 0),
@@ -424,10 +412,9 @@ int kraken_driver_probe(struct usb_interface *interface,
 	struct usb_kraken *kraken = usb_get_intfdata(interface);
 
 	int ret = -ENOMEM;
-	kraken->data = kzalloc(sizeof *kraken->data, GFP_KERNEL | GFP_DMA);
-	if (kraken->data == NULL) {
+	kraken->data = kzalloc(sizeof(*kraken->data), GFP_KERNEL | GFP_DMA);
+	if (kraken->data == NULL)
 		goto error_data;
-	}
 	data = kraken->data;
 
 	kraken_driver_data_init(data);

@@ -60,8 +60,7 @@ int kraken_driver_update(struct usb_kraken *kraken)
 		   )
 			dev_err(&kraken->udev->dev, "Failed to update: %d\n", retval);
 		data->send_color = false;
-	}
-	else {
+	} else {
 		if (
 			(retval = kraken_start_transaction(kraken)) ||
 			(retval = kraken_send_message(kraken, data->pump_message, 2)) ||
@@ -204,23 +203,19 @@ static ssize_t set_mode(struct device *dev, struct device_attribute *attr, const
 		data->color_message[13] = 1;
 		data->color_message[14] = 0;
 		data->color_message[15] = 0;
-	}
-	else if (strncasecmp(buf, "alternating", strlen("alternating")) == 0) {
+	} else if (strncasecmp(buf, "alternating", strlen("alternating")) == 0) {
 		data->color_message[13] = 1;
 		data->color_message[14] = 1;
 		data->color_message[15] = 0;
-	}
-	else if (strncasecmp(buf, "blinking", strlen("blinking")) == 0) {
+	} else if (strncasecmp(buf, "blinking", strlen("blinking")) == 0) {
 		data->color_message[13] = 1;
 		data->color_message[14] = 0;
 		data->color_message[15] = 1;
-	}
-	else if (strncasecmp(buf, "off", strlen("off")) == 0) {
+	} else if (strncasecmp(buf, "off", strlen("off")) == 0) {
 		data->color_message[13] = 0;
 		data->color_message[14] = 0;
 		data->color_message[15] = 0;
-	}
-	else
+	} else
 		return -EINVAL;
 
 	data->send_color = true;
@@ -316,7 +311,7 @@ int kraken_driver_probe(struct usb_interface *interface, const struct usb_device
 	struct kraken_driver_data *data;
 	struct usb_kraken *kraken = usb_get_intfdata(interface);
 	int retval = -ENOMEM;
-	kraken->data = kmalloc(sizeof *kraken->data, GFP_KERNEL | GFP_DMA);
+	kraken->data = kmalloc(sizeof(*kraken->data), GFP_KERNEL | GFP_DMA);
 	if (!kraken->data)
 		goto error_data;
 	data = kraken->data;

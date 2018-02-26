@@ -3,6 +3,7 @@
 
 #include "leds.h"
 #include "percent.h"
+#include "status.h"
 #include "../common.h"
 #include "../util.h"
 
@@ -10,26 +11,24 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
-#include <linux/string.h>
 #include <linux/usb.h>
 
 #define DRIVER_NAME "kraken_x62"
 
 #define DATA_SERIAL_NUMBER_SIZE 65
-#define DATA_STATUS_MSG_SIZE    17
 
-const u8 DATA_STATUS_MSG_HEADER[] = {
-	0x04,
-};
-const u8 DATA_STATUS_MSG_FOOTER[] = {
-	0x00, 0x00, 0x00, 0x78, 0x02, 0x00, 0x01, 0x08, 0x1e, 0x00,
-};
+#define PERCENT_FAN_MIN      35
+#define PERCENT_FAN_MAX     100
+#define PERCENT_FAN_DEFAULT  35
+
+#define PERCENT_PUMP_MIN      50
+#define PERCENT_PUMP_MAX     100
+#define PERCENT_PUMP_DEFAULT  60
 
 struct kraken_driver_data {
 	char serial_number[DATA_SERIAL_NUMBER_SIZE];
 
-	u8 status_msg[DATA_STATUS_MSG_SIZE];
-	struct mutex status_mutex;
+	struct status_data status;
 
 	struct percent_data percent_fan;
 	struct percent_data percent_pump;
@@ -40,43 +39,13 @@ struct kraken_driver_data {
 
 static void kraken_driver_data_init(struct kraken_driver_data *data)
 {
-	mutex_init(&data->status_mutex);
+	status_data_init(&data->status);
 	percent_data_init(&data->percent_fan, 0x00);
+	percent_data_set(&data->percent_fan, PERCENT_FAN_DEFAULT);
 	percent_data_init(&data->percent_pump, 0x40);
+	percent_data_set(&data->percent_pump, PERCENT_PUMP_DEFAULT);
 	led_cycles_init(&data->led_cycles_logo, LEDS_WHICH_LOGO);
 	led_cycles_init(&data->led_cycles_ring, LEDS_WHICH_RING);
-}
-
-static int kraken_x62_update_status(struct usb_kraken *kraken,
-                                    struct kraken_driver_data *data)
-{
-	int received;
-	int ret;
-	mutex_lock(&data->status_mutex);
-	ret = usb_interrupt_msg(
-		kraken->udev, usb_rcvctrlpipe(kraken->udev, 1),
-		data->status_msg, DATA_STATUS_MSG_SIZE, &received, 1000);
-	mutex_unlock(&data->status_mutex);
-
-	if (ret || received != DATA_STATUS_MSG_SIZE) {
-		dev_err(&kraken->udev->dev,
-		        "failed status update: I/O error\n");
-		return ret ? ret : 1;
-	}
-	if (memcmp(data->status_msg + 0, DATA_STATUS_MSG_HEADER,
-	           sizeof DATA_STATUS_MSG_HEADER) != 0 ||
-	    memcmp(data->status_msg +
-	           DATA_STATUS_MSG_SIZE - sizeof DATA_STATUS_MSG_FOOTER,
-	           DATA_STATUS_MSG_FOOTER,
-	           sizeof DATA_STATUS_MSG_FOOTER) != 0) {
-		char status_hex[DATA_STATUS_MSG_SIZE * 3 + 1];
-		hex_dump_to_buffer(data->status_msg, DATA_STATUS_MSG_SIZE, 32,
-		                   1, status_hex, sizeof status_hex, false);
-		dev_err(&kraken->udev->dev,
-		        "received invalid status message: %s\n", status_hex);
-		return 1;
-	}
-	return 0;
 }
 
 int kraken_driver_update(struct usb_kraken *kraken)
@@ -84,7 +53,7 @@ int kraken_driver_update(struct usb_kraken *kraken)
 	struct kraken_driver_data *data = kraken->data;
 
 	int ret;
-	if ((ret = kraken_x62_update_status(kraken, data)) ||
+	if ((ret = kraken_x62_update_status(kraken, &data->status)) ||
 	    (ret = kraken_x62_update_percent(kraken, &data->percent_fan)) ||
 	    (ret = kraken_x62_update_percent(kraken, &data->percent_pump)) ||
 	    (ret = kraken_x62_update_led_cycles(kraken,
@@ -94,47 +63,6 @@ int kraken_driver_update(struct usb_kraken *kraken)
 		return ret;
 	}
 	return 0;
-}
-
-static u8 data_temp_liquid(struct kraken_driver_data *data)
-{
-	u8 temp;
-	mutex_lock(&data->status_mutex);
-	temp = data->status_msg[1];
-	mutex_unlock(&data->status_mutex);
-
-	return temp;
-}
-
-static u16 data_fan_rpm(struct kraken_driver_data *data)
-{
-	u16 rpm_be;
-	mutex_lock(&data->status_mutex);
-	rpm_be = *((u16 *) (data->status_msg + 3));
-	mutex_unlock(&data->status_mutex);
-
-	return be16_to_cpu(rpm_be);
-}
-
-static u16 data_pump_rpm(struct kraken_driver_data *data)
-{
-	u16 rpm_be;
-	mutex_lock(&data->status_mutex);
-	rpm_be = *((u16 *) (data->status_msg + 5));
-	mutex_unlock(&data->status_mutex);
-
-	return be16_to_cpu(rpm_be);
-}
-
-// TODO figure out what this is
-static u8 data_unknown_1(struct kraken_driver_data *data)
-{
-	u8 unknown_1;
-	mutex_lock(&data->status_mutex);
-	unknown_1 = data->status_msg[2];
-	mutex_unlock(&data->status_mutex);
-
-	return unknown_1;
 }
 
 static ssize_t serial_no_show(struct device *dev, struct device_attribute *attr,
@@ -150,8 +78,9 @@ static ssize_t temp_liquid_show(struct device *dev,
                                 struct device_attribute *attr, char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	struct status_data *status = &kraken->data->status;
 	return scnprintf(buf, PAGE_SIZE,
-	                 "%u\n", data_temp_liquid(kraken->data));
+	                 "%u\n", status_data_temp_liquid(status));
 }
 
 static DEVICE_ATTR_RO(temp_liquid);
@@ -160,7 +89,8 @@ static ssize_t fan_rpm_show(struct device *dev, struct device_attribute *attr,
                             char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	return scnprintf(buf, PAGE_SIZE, "%u\n", data_fan_rpm(kraken->data));
+	struct status_data *status = &kraken->data->status;
+	return scnprintf(buf, PAGE_SIZE, "%u\n", status_data_fan_rpm(status));
 }
 
 static DEVICE_ATTR_RO(fan_rpm);
@@ -169,7 +99,8 @@ static ssize_t pump_rpm_show(struct device *dev, struct device_attribute *attr,
                              char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	return scnprintf(buf, PAGE_SIZE, "%u\n", data_pump_rpm(kraken->data));
+	struct status_data *status = &kraken->data->status;
+	return scnprintf(buf, PAGE_SIZE, "%u\n", status_data_pump_rpm(status));
 }
 
 static DEVICE_ATTR_RO(pump_rpm);
@@ -178,14 +109,11 @@ static ssize_t unknown_1_show(struct device *dev, struct device_attribute *attr,
                               char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	return scnprintf(buf, PAGE_SIZE, "%u\n", data_unknown_1(kraken->data));
+	struct status_data *status = &kraken->data->status;
+	return scnprintf(buf, PAGE_SIZE, "%u\n", status_data_unknown_1(status));
 }
 
 static DEVICE_ATTR_RO(unknown_1);
-
-#define PERCENT_FAN_MIN      35
-#define PERCENT_FAN_MAX     100
-#define PERCENT_FAN_DEFAULT  35
 
 static ssize_t fan_percent_store(struct device *dev,
                                  struct device_attribute *attr, const char *buf,
@@ -202,10 +130,6 @@ static ssize_t fan_percent_store(struct device *dev,
 }
 
 static DEVICE_ATTR(fan_percent, S_IWUSR | S_IWGRP, NULL, fan_percent_store);
-
-#define PERCENT_PUMP_MIN      50
-#define PERCENT_PUMP_MAX     100
-#define PERCENT_PUMP_DEFAULT  60
 
 static ssize_t pump_percent_store(struct device *dev,
                                   struct device_attribute *attr,
@@ -512,9 +436,6 @@ int kraken_driver_probe(struct usb_interface *interface,
 		dev_err(&interface->dev, "failed to initialize: %d\n", ret);
 		goto error_init_message;
 	}
-
-	percent_data_set(&data->percent_fan, PERCENT_FAN_DEFAULT);
-	percent_data_set(&data->percent_pump, PERCENT_PUMP_DEFAULT);
 
 	dev_info(&interface->dev, "device connected\n");
 

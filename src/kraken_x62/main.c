@@ -2,6 +2,7 @@
  */
 
 #include "leds.h"
+#include "percent.h"
 #include "../common.h"
 #include "../util.h"
 
@@ -13,33 +14,6 @@
 #include <linux/usb.h>
 
 #define DRIVER_NAME "kraken_x62"
-
-#define PERCENT_MSG_SIZE 5
-
-const u8 PERCENT_MSG_HEADER[] = {
-	0x02, 0x4d,
-};
-
-struct percent_data {
-	u8 msg[PERCENT_MSG_SIZE];
-	bool update;
-	struct mutex mutex;
-};
-
-static void percent_data_init(struct percent_data *data, u8 type_byte)
-{
-	memcpy(data->msg, PERCENT_MSG_HEADER, sizeof PERCENT_MSG_HEADER);
-	data->msg[2] = type_byte;
-	mutex_init(&data->mutex);
-}
-
-static void percent_data_set(struct percent_data *data, u8 percent)
-{
-	mutex_lock(&data->mutex);
-	data->msg[4] = percent;
-	data->update = true;
-	mutex_unlock(&data->mutex);
-}
 
 #define DATA_SERIAL_NUMBER_SIZE 65
 #define DATA_STATUS_MSG_SIZE    17
@@ -101,29 +75,6 @@ static int kraken_x62_update_status(struct usb_kraken *kraken,
 		dev_err(&kraken->udev->dev,
 		        "received invalid status message: %s\n", status_hex);
 		return 1;
-	}
-	return 0;
-}
-
-static int kraken_x62_update_percent(struct usb_kraken *kraken,
-                                     struct percent_data *data)
-{
-	int ret, sent;
-
-	mutex_lock(&data->mutex);
-	if (! data->update) {
-		mutex_unlock(&data->mutex);
-		return 0;
-	}
-	ret = usb_interrupt_msg(kraken->udev, usb_sndctrlpipe(kraken->udev, 1),
-	                        data->msg, PERCENT_MSG_SIZE, &sent, 1000);
-	data->update = false;
-	mutex_unlock(&data->mutex);
-
-	if (ret || sent != PERCENT_MSG_SIZE) {
-		dev_err(&kraken->udev->dev,
-		        "failed to set speed percent: I/O error\n");
-		return ret ? ret : 1;
 	}
 	return 0;
 }
@@ -231,22 +182,6 @@ static ssize_t unknown_1_show(struct device *dev, struct device_attribute *attr,
 }
 
 static DEVICE_ATTR_RO(unknown_1);
-
-static int percent_from(const char *buf, unsigned int min, unsigned int max)
-{
-	unsigned int percent;
-	int ret = kstrtouint(buf, 0, &percent);
-	if (ret) {
-		return ret;
-	}
-	if (percent < min) {
-		return min;
-	}
-	if (percent > max) {
-		return max;
-	}
-	return percent;
-}
 
 #define PERCENT_FAN_MIN      35
 #define PERCENT_FAN_MAX     100

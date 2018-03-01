@@ -2,6 +2,7 @@
  */
 
 #include "led.h"
+#include "led_parser.h"
 #include "percent.h"
 #include "status.h"
 #include "../common.h"

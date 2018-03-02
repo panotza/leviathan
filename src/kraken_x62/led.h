@@ -93,7 +93,7 @@ struct led_data_reg {
 /**
  * Legal values for led_data_dyn are in [0, LED_DATA_DYN_VAL_MAX].
  */
-#define LED_DATA_DYN_VAL_MAX   ((size_t) LED_DATA_DYN_VAL_NONE - 1)
+#define LED_DATA_DYN_VAL_MAX   ((u8) LED_DATA_DYN_VAL_NONE - 1)
 
 /**
  * Max nr of messages that can be stored in a led_data_dyn.

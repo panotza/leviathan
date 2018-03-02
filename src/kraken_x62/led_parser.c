@@ -1,9 +1,10 @@
 /* Parsing of LED attributes.
  */
 
-#include "driver_data.h"
 #include "led_parser.h"
+#include "driver_data.h"
 #include "led.h"
+#include "percent.h"
 #include "status.h"
 #include "../util.h"
 
@@ -284,6 +285,16 @@ static u8 led_data_dyn_temp_liquid(struct kraken_driver_data *driver_data)
 	return status_data_temp_liquid(&driver_data->status);
 }
 
+static u8 led_data_dyn_percent_fan(struct kraken_driver_data *driver_data)
+{
+	return percent_data_get(&driver_data->percent_fan);
+}
+
+static u8 led_data_dyn_percent_pump(struct kraken_driver_data *driver_data)
+{
+	return percent_data_get(&driver_data->percent_pump);
+}
+
 static int led_parser_dyn_source(struct led_parser_dyn *parser,
                                  const char **buf)
 {
@@ -296,6 +307,10 @@ static int led_parser_dyn_source(struct led_parser_dyn *parser,
 	}
 	if (strcasecmp(source, "temp_liquid") == 0) {
 		parser->get_value = led_data_dyn_temp_liquid;
+	} else if (strcasecmp(source, "percent_fan") == 0) {
+		parser->get_value = led_data_dyn_percent_fan;
+	} else if (strcasecmp(source, "percent_pump") == 0) {
+		parser->get_value = led_data_dyn_percent_pump;
 	} else {
 		dev_err(parser->dev, "%s: illegal source: %s\n",
 		        parser->attr->attr.name, source);
@@ -318,6 +333,13 @@ static int led_parser_dyn_ranges(struct led_parser_dyn *parser,
 			        "%s: too many value ranges: max %zu\n",
 			        parser->attr->attr.name,
 			        LED_DATA_DYN_MSGS_SIZE);
+			return 1;
+		}
+		if (min > LED_DATA_DYN_VAL_MAX || max > LED_DATA_DYN_VAL_MAX) {
+			dev_err(parser->dev,
+			        "%s: range %u-%u exceeds max value %u",
+			        parser->attr->attr.name, min, max,
+			        LED_DATA_DYN_VAL_MAX);
 			return 1;
 		}
 		parser->range_mins[parser->ranges] = min;

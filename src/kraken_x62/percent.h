@@ -14,6 +14,7 @@ struct percent_data {
 };
 
 void percent_data_init(struct percent_data *data, u8 type_byte);
+u8 percent_data_get(struct percent_data *data);
 void percent_data_set(struct percent_data *data, u8 percent);
 
 int kraken_x62_update_percent(struct usb_kraken *kraken,

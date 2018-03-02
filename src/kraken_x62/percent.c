@@ -15,6 +15,15 @@ void percent_data_init(struct percent_data *data, u8 type_byte)
 	mutex_init(&data->mutex);
 }
 
+u8 percent_data_get(struct percent_data *data)
+{
+	u8 percent;
+	mutex_lock(&data->mutex);
+	percent = data->msg[4];
+	mutex_unlock(&data->mutex);
+	return percent;
+}
+
 void percent_data_set(struct percent_data *data, u8 percent)
 {
 	mutex_lock(&data->mutex);

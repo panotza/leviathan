@@ -92,6 +92,14 @@ static ssize_t unknown_1_show(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RO(unknown_1);
 
+static ssize_t fan_percent_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	struct percent_data *fan = &kraken->data->percent_fan;
+	return scnprintf(buf, PAGE_SIZE, "%u\n", percent_data_get(fan));
+}
+
 static ssize_t fan_percent_store(struct device *dev,
                                  struct device_attribute *attr, const char *buf,
                                  size_t count)
@@ -105,7 +113,15 @@ static ssize_t fan_percent_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(fan_percent, S_IWUSR | S_IWGRP, NULL, fan_percent_store);
+static DEVICE_ATTR_RW(fan_percent);
+
+static ssize_t pump_percent_show(struct device *dev,
+                                 struct device_attribute *attr, char *buf)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	struct percent_data *pump = &kraken->data->percent_pump;
+	return scnprintf(buf, PAGE_SIZE, "%u\n", percent_data_get(pump));
+}
 
 static ssize_t pump_percent_store(struct device *dev,
                                   struct device_attribute *attr,
@@ -120,7 +136,7 @@ static ssize_t pump_percent_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(pump_percent, S_IWUSR | S_IWGRP, NULL, pump_percent_store);
+static DEVICE_ATTR_RW(pump_percent);
 
 static bool led_logo_preset_legal(struct led_parser_reg *parser)
 {

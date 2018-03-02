@@ -209,7 +209,7 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-static DEVICE_ATTR(led_logo, S_IWUSR | S_IWGRP, NULL, led_logo_store);
+static DEVICE_ATTR_WO(led_logo);
 
 static enum led_parser_ret led_logo_dyn_parse(struct led_parser_dyn *parser,
                                               const char **buf)
@@ -260,7 +260,7 @@ static ssize_t led_logo_dyn_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(led_logo_dyn, S_IWUSR | S_IWGRP, NULL, led_logo_dyn_store);
+static DEVICE_ATTR_WO(led_logo_dyn);
 
 static bool leds_ring_preset_legal(struct led_parser_reg *parser)
 {
@@ -338,7 +338,7 @@ static ssize_t leds_ring_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(leds_ring, S_IWUSR | S_IWGRP, NULL, leds_ring_store);
+static DEVICE_ATTR_WO(leds_ring);
 
 static enum led_parser_ret leds_ring_dyn_parse(struct led_parser_dyn *parser,
                                                const char **buf)
@@ -401,7 +401,7 @@ static ssize_t leds_ring_dyn_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(leds_ring_dyn, S_IWUSR | S_IWGRP, NULL, leds_ring_dyn_store);
+static DEVICE_ATTR_WO(leds_ring_dyn);
 
 int kraken_driver_create_device_files(struct usb_interface *interface)
 {

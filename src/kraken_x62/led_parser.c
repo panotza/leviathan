@@ -1,11 +1,13 @@
 /* Parsing of LED attributes.
  */
 
+#include "driver_data.h"
 #include "led_parser.h"
 #include "led.h"
+#include "status.h"
 #include "../util.h"
 
-void led_parser_init(struct led_parser *parser)
+void led_parser_reg_init(struct led_parser_reg *parser)
 {
 	parser->moving = false;
 	parser->direction = LED_DIRECTION_CLOCKWISE;
@@ -15,7 +17,8 @@ void led_parser_init(struct led_parser *parser)
 	parser->cycles = 0;
 }
 
-void led_parser_to_data(struct led_parser *parser, struct led_data *data)
+void led_parser_reg_to_data(struct led_parser_reg *parser,
+                            struct led_data_reg *data)
 {
 	u8 i;
 	for (i = 0; i < parser->cycles; i++) {
@@ -30,7 +33,8 @@ void led_parser_to_data(struct led_parser *parser, struct led_data *data)
 	parser->cycles_data_to_data(parser, data);
 }
 
-static int led_parser_preset(struct led_parser *parser, const char **buf)
+static int led_parser_reg_preset(struct led_parser_reg *parser,
+                                 const char **buf)
 {
 	char preset_str[WORD_LEN_MAX + 1];
 	int ret = str_scan_word(buf, preset_str);
@@ -48,7 +52,7 @@ static int led_parser_preset(struct led_parser *parser, const char **buf)
 	return 0;
 }
 
-static enum led_parser_ret led_parser_key_moving(struct led_parser *parser,
+static enum led_parser_ret led_parser_key_moving(struct led_parser_reg *parser,
                                                  const char **buf)
 {
 	char word[WORD_LEN_MAX + 1];
@@ -68,8 +72,8 @@ static enum led_parser_ret led_parser_key_moving(struct led_parser *parser,
 	return ret ? LED_PARSER_RET_VALUE_INVALID : LED_PARSER_RET_OK;
 }
 
-static enum led_parser_ret led_parser_key_direction(struct led_parser *parser,
-                                                    const char **buf)
+static enum led_parser_ret led_parser_key_direction(
+	struct led_parser_reg *parser, const char **buf)
 {
 	char word[WORD_LEN_MAX + 1];
 	int ret;
@@ -90,8 +94,8 @@ static enum led_parser_ret led_parser_key_direction(struct led_parser *parser,
 	return ret ? LED_PARSER_RET_VALUE_INVALID : LED_PARSER_RET_OK;
 }
 
-static enum led_parser_ret led_parser_key_interval(struct led_parser *parser,
-                                                   const char **buf)
+static enum led_parser_ret led_parser_key_interval(
+	struct led_parser_reg *parser, const char **buf)
 {
 	char word[WORD_LEN_MAX + 1];
 	int ret;
@@ -118,8 +122,8 @@ static enum led_parser_ret led_parser_key_interval(struct led_parser *parser,
 	return ret ? LED_PARSER_RET_VALUE_INVALID : LED_PARSER_RET_OK;
 }
 
-static enum led_parser_ret led_parser_key_group_size(struct led_parser *parser,
-                                                     const char **buf)
+static enum led_parser_ret led_parser_key_group_size(
+	struct led_parser_reg *parser, const char **buf)
 {
 	int scanned;
 	int ret;
@@ -138,71 +142,23 @@ static enum led_parser_ret led_parser_key_group_size(struct led_parser *parser,
 	return LED_PARSER_RET_OK;
 }
 
-typedef enum led_parser_ret led_parser_key_common_fn(struct led_parser *parser,
-                                                     const char **buf);
-
-static const char * const LED_PARSER_KEYS_COMMON[] = {
-	"moving",
-	"direction",
-	"interval",
-	"group_size",
-	NULL,
-};
-
-static led_parser_key_common_fn * const LED_PARSER_KEY_COMMON_FNS[] = {
-	led_parser_key_moving,
-	led_parser_key_direction,
-	led_parser_key_interval,
-	led_parser_key_group_size,
-	NULL,
-};
-
 static enum led_parser_ret led_parser_common_parse_key(
-	struct led_parser *parser, const char *key, const char **buf)
+	struct led_parser_reg *parser, const char *key, const char **buf)
 {
-	size_t i;
-	led_parser_key_common_fn *parse = NULL;
-	for (i = 0; LED_PARSER_KEYS_COMMON[i] != NULL; i++)
-		if (strcmp(LED_PARSER_KEYS_COMMON[i], key) == 0) {
-			parse = LED_PARSER_KEY_COMMON_FNS[i];
-			break;
-		}
-	if (parse == NULL)
+	if (strcmp("moving", key) == 0) {
+		return led_parser_key_moving(parser, buf);
+	} else if (strcmp("direction", key) == 0) {
+		return led_parser_key_direction(parser, buf);
+	} else if (strcmp("interval", key) == 0) {
+		return led_parser_key_interval(parser, buf);
+	} else if (strcmp("group_size", key) == 0) {
+		return led_parser_key_group_size(parser, buf);
+	} else {
 		return LED_PARSER_RET_KEY;
-	return parse(parser, buf);
-}
-
-static int led_parser_check_cycles(struct led_parser *parser)
-{
-	bool ok = false;
-	switch (parser->preset) {
-	case LED_PRESET_FIXED:
-	case LED_PRESET_SPECTRUM_WAVE:
-	case LED_PRESET_MARQUEE:
-	case LED_PRESET_WATER_COOLER:
-	case LED_PRESET_LOAD:
-		ok = parser->cycles == 1;
-		break;
-	case LED_PRESET_ALTERNATING:
-	case LED_PRESET_TAI_CHI:
-		ok = parser->cycles == 2;
-		break;
-	case LED_PRESET_FADING:
-	case LED_PRESET_COVERING_MARQUEE:
-	case LED_PRESET_BREATHING:
-	case LED_PRESET_PULSE:
-		ok = parser->cycles >= 1 &&
-			parser->cycles <= LED_DATA_CYCLES_SIZE;
-		break;
 	}
-	if (!ok)
-		dev_err(parser->dev,
-		        "%s: invalid number of cycles for given preset: %d\n",
-		        parser->attr->attr.name, parser->cycles);
-	return !ok;
 }
 
-static int led_parser_keys(struct led_parser *parser, const char **buf)
+static int led_parser_reg_keys(struct led_parser_reg *parser, const char **buf)
 {
 	char key[WORD_LEN_MAX + 1];
 	enum led_parser_ret ret;
@@ -212,7 +168,7 @@ static int led_parser_keys(struct led_parser *parser, const char **buf)
 		if (ret == LED_PARSER_RET_KEY) {
 			if (parser->cycles == LED_DATA_CYCLES_SIZE) {
 				dev_err(parser->dev,
-				        "%s: too many cycles: max %u\n",
+				        "%s: too many cycles: max %zu\n",
 				        parser->attr->attr.name,
 				        LED_DATA_CYCLES_SIZE);
 				return 1;
@@ -246,9 +202,39 @@ static int led_parser_keys(struct led_parser *parser, const char **buf)
 	return 0;
 }
 
-int led_parser_parse(struct led_parser *parser, const char *buf)
+static int led_parser_reg_check_cycles(struct led_parser_reg *parser)
 {
-	int ret = led_parser_preset(parser, &buf);
+	bool ok = false;
+	switch (parser->preset) {
+	case LED_PRESET_FIXED:
+	case LED_PRESET_SPECTRUM_WAVE:
+	case LED_PRESET_MARQUEE:
+	case LED_PRESET_WATER_COOLER:
+	case LED_PRESET_LOAD:
+		ok = parser->cycles == 1;
+		break;
+	case LED_PRESET_ALTERNATING:
+	case LED_PRESET_TAI_CHI:
+		ok = parser->cycles == 2;
+		break;
+	case LED_PRESET_FADING:
+	case LED_PRESET_COVERING_MARQUEE:
+	case LED_PRESET_BREATHING:
+	case LED_PRESET_PULSE:
+		ok = parser->cycles >= 1 &&
+			parser->cycles <= LED_DATA_CYCLES_SIZE;
+		break;
+	}
+	if (!ok)
+		dev_err(parser->dev,
+		        "%s: invalid number of cycles for given preset: %d\n",
+		        parser->attr->attr.name, parser->cycles);
+	return !ok;
+}
+
+int led_parser_reg_parse(struct led_parser_reg *parser, const char *buf)
+{
+	int ret = led_parser_reg_preset(parser, &buf);
 	if (ret)
 		return ret;
 	if (!parser->preset_legal(parser)) {
@@ -256,9 +242,119 @@ int led_parser_parse(struct led_parser *parser, const char *buf)
 		        parser->attr->attr.name);
 		return 1;
 	}
-	ret = led_parser_keys(parser, &buf);
+	ret = led_parser_reg_keys(parser, &buf);
 	if (ret)
 		return ret;
-	ret = led_parser_check_cycles(parser);
+	ret = led_parser_reg_check_cycles(parser);
+	return ret;
+}
+
+
+void led_parser_dyn_init(struct led_parser_dyn *parser)
+{
+	parser->ranges = 0;
+}
+
+void led_parser_dyn_to_data(struct led_parser_dyn *parser,
+                            struct led_data_dyn *data)
+{
+	size_t i;
+	u8 j;
+	data->get_value = parser->get_value;
+	// first fill value_msgs with the default message
+	for (i = 0; i <= LED_DATA_DYN_VAL_MAX; i++) {
+		data->value_msgs[i] = &data->msg_default;
+	}
+	// for each range
+	for (i = 0; i < parser->ranges; i++) {
+		// set the message for all values in the range
+		struct led_msg *msg = &data->msgs[i];
+		parser->ranges_data_to_msg(parser, i, msg);
+		for (j = parser->range_mins[i]; j <= parser->range_maxes[i];
+		     j++)
+			data->value_msgs[j] = msg;
+	}
+	// force next update
+	data->value_prev = LED_DATA_DYN_VAL_NONE;
+	data->msg_prev = NULL;
+}
+
+static u8 led_data_dyn_temp_liquid(struct kraken_driver_data *driver_data)
+{
+	return status_data_temp_liquid(&driver_data->status);
+}
+
+static int led_parser_dyn_source(struct led_parser_dyn *parser,
+                                 const char **buf)
+{
+	char source[WORD_LEN_MAX + 1];
+	int ret = str_scan_word(buf, source);
+	if (ret) {
+		dev_err(parser->dev, "%s: missing source\n",
+		        parser->attr->attr.name);
+		return ret;
+	}
+	if (strcasecmp(source, "temp_liquid") == 0) {
+		parser->get_value = led_data_dyn_temp_liquid;
+	} else {
+		dev_err(parser->dev, "%s: illegal source: %s\n",
+		        parser->attr->attr.name, source);
+		return 1;
+	}
+	return 0;
+}
+
+static int led_parser_dyn_ranges(struct led_parser_dyn *parser,
+                                 const char **buf)
+{
+	char word[WORD_LEN_MAX + 1];
+	int ret, scanned;
+	enum led_parser_ret ret_parse;
+	u8 min, max;
+	while ((ret = sscanf(*buf, "%hhu-%hhu%n", &min, &max, &scanned)) == 2) {
+		*buf += scanned;
+		if (parser->ranges == LED_DATA_DYN_MSGS_SIZE) {
+			dev_err(parser->dev,
+			        "%s: too many value ranges: max %zu\n",
+			        parser->attr->attr.name,
+			        LED_DATA_DYN_MSGS_SIZE);
+			return 1;
+		}
+		parser->range_mins[parser->ranges] = min;
+		parser->range_maxes[parser->ranges] = max;
+		ret_parse = parser->ranges_data_parse(parser, buf);
+		parser->ranges++;
+		switch (ret_parse) {
+		case LED_PARSER_RET_OK:
+			continue;
+		case LED_PARSER_RET_VALUE_MISSING:
+			dev_err(parser->dev, "%s: missing value\n",
+			        parser->attr->attr.name);
+			break;
+		case LED_PARSER_RET_VALUE_INVALID:
+			dev_err(parser->dev, "%s: invalid value\n",
+			        parser->attr->attr.name);
+			break;
+		default:
+			dev_err(parser->dev, "%s: cannot parse value: ret %d\n",
+			        parser->attr->attr.name, ret_parse);
+			break;
+		}
+		return 1;
+	}
+	if (ret != 0 || !str_scan_word(buf, word)) {
+		dev_err(parser->dev, "%s: unrecognized data left in buffer\n",
+		        parser->attr->attr.name);
+		return ret ? ret : 1;
+	}
+	return 0;
+}
+
+int led_parser_dyn_parse(struct led_parser_dyn *parser, const char *buf)
+{
+	int ret = led_parser_dyn_source(parser, &buf);
+	if (ret)
+		return ret;
+	ret = led_parser_dyn_ranges(parser, &buf);
 	return ret;
 }

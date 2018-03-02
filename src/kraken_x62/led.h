@@ -5,8 +5,8 @@
 
 #include <linux/mutex.h>
 
-#define LED_MSG_SIZE        32
-#define LED_MSG_COLORS_RING 8
+#define LED_MSG_SIZE        ((size_t) 32)
+#define LED_MSG_COLORS_RING  ((size_t) 8)
 
 struct led_msg {
 	u8 msg[LED_MSG_SIZE];
@@ -68,13 +68,66 @@ int led_color_from_str(struct led_color *color, const char *str);
 void led_msg_color_logo(struct led_msg *msg, const struct led_color *color);
 void led_msg_colors_ring(struct led_msg *msg, const struct led_color *colors);
 
-#define LED_DATA_CYCLES_SIZE 8
+enum led_data_type {
+	LED_DATA_TYPE_NONE,
+	LED_DATA_TYPE_REG,
+	LED_DATA_TYPE_DYN,
+};
+
+#define LED_DATA_CYCLES_SIZE ((size_t) 8)
+
+/**
+ * Regular LED update data, only sent once.
+ */
+struct led_data_reg {
+	struct led_msg cycles[LED_DATA_CYCLES_SIZE];
+	// first len messages in `cycles` are to be sent when updating
+	u8 len;
+};
+
+/**
+ * Represents no value for led_data_dyn.  Not withing the range of legal values.
+ */
+#define LED_DATA_DYN_VAL_NONE  U8_MAX
+
+/**
+ * Legal values for led_data_dyn are in [0, LED_DATA_DYN_VAL_MAX].
+ */
+#define LED_DATA_DYN_VAL_MAX   ((size_t) LED_DATA_DYN_VAL_NONE - 1)
+
+/**
+ * Max nr of messages that can be stored in a led_data_dyn.
+ */
+#define LED_DATA_DYN_MSGS_SIZE ((size_t) 64)
+
+typedef u8 led_data_dyn_value_fn(struct kraken_driver_data *driver_data);
+
+/**
+ * Dynamic LED update data, sent on each update based on a value.
+ */
+struct led_data_dyn {
+	// gets the dynamic value when called by the update function; must
+	// return LED_DATA_DYN_NONE iff an error occurs
+	led_data_dyn_value_fn *get_value;
+	// value_msgs[val] is the message to send for value val; each element
+	// points either to an element of msgs or to msg_default
+	struct led_msg *value_msgs[LED_DATA_DYN_VAL_MAX + 1];
+	struct led_msg msgs[LED_DATA_DYN_MSGS_SIZE];
+	struct led_msg msg_default;
+	// no new message is sent if the previous value or message is equal to
+	// the current one, as an update would have no effect then
+	u8 value_prev;
+	struct led_msg *msg_prev;
+};
 
 struct led_data {
-	struct led_msg cycles[LED_DATA_CYCLES_SIZE];
-	// first len messages in `cycles` are to be sent when updating (0 means
-	// do not update the LEDs)
-	u8 len;
+	enum led_data_type type;
+	// NOTE: not using a union here -- these structs are initialized at the
+	// start, and later only updated when needed; the space savings from a
+	// union would not be worth having to re-initialize everything each time
+	// the type is changed, forgetting which could also lead to nasty bugs
+	struct led_data_reg reg;
+	struct led_data_dyn dyn;
 	struct mutex mutex;
 };
 

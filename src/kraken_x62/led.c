@@ -13,7 +13,7 @@ const u8 LED_MSG_HEADER[] = {
 
 static void led_msg_init(struct led_msg *msg)
 {
-	memcpy(msg->msg, LED_MSG_HEADER, sizeof(LED_MSG_HEADER));
+	memcpy(msg->msg, LED_MSG_HEADER, ARRAY_SIZE(LED_MSG_HEADER));
 }
 
 static void led_msg_which(struct led_msg *msg, enum led_which which)
@@ -173,7 +173,7 @@ void led_msg_colors_ring(struct led_msg *msg, const struct led_color *colors)
 	}
 }
 
-void led_data_init(struct led_data *data, enum led_which which)
+static void led_data_reg_init(struct led_data_reg *data, enum led_which which)
 {
 	u8 i;
 	for (i = 0; i < LED_DATA_CYCLES_SIZE; i++) {
@@ -182,28 +182,106 @@ void led_data_init(struct led_data *data, enum led_which which)
 		led_msg_cycle(&data->cycles[i], i);
 	}
 	data->len = 0;
+}
+
+static void led_msg_default_all(struct led_msg *msg)
+{
+	led_msg_moving(msg, false);
+	led_msg_direction(msg, LED_DIRECTION_CLOCKWISE);
+	led_msg_preset(msg, LED_PRESET_FIXED);
+	led_msg_interval(msg, LED_INTERVAL_NORMAL);
+	led_msg_group_size(msg, 3);
+	led_msg_cycle(msg, 0);
+}
+
+static void led_data_dyn_init(struct led_data_dyn *data, enum led_which which)
+{
+	u8 i;
+	for (i = 0; i < LED_DATA_DYN_MSGS_SIZE; i++) {
+		struct led_msg *msg = &data->msgs[i];
+		led_msg_init(msg);
+		led_msg_which(msg, which);
+		led_msg_default_all(msg);
+	}
+	memset(data->msg_default.msg, 0, ARRAY_SIZE(data->msg_default.msg));
+	led_msg_init(&data->msg_default);
+	led_msg_which(&data->msg_default, which);
+	led_msg_default_all(&data->msg_default);
+
+	data->value_prev = LED_DATA_DYN_VAL_NONE;
+	data->msg_prev = NULL;
+}
+
+void led_data_init(struct led_data *data, enum led_which which)
+{
+	data->type = LED_DATA_TYPE_NONE;
+	led_data_reg_init(&data->reg, which);
+	led_data_dyn_init(&data->dyn, which);
 	mutex_init(&data->mutex);
 }
 
-int kraken_x62_update_led(struct usb_kraken *kraken, struct led_data *data)
+int led_data_reg_update(struct led_data_reg *data, struct usb_kraken *kraken)
 {
-	u8 i;
 	int ret, sent;
-
-	mutex_lock(&data->mutex);
+	u8 i;
 	for (i = 0; i < data->len; i++) {
 		ret = usb_interrupt_msg(
 			kraken->udev, usb_sndctrlpipe(kraken->udev, 1),
 			data->cycles[i].msg, LED_MSG_SIZE, &sent, 1000);
 		if (ret || sent != LED_MSG_SIZE) {
-			data->len = 0;
-			mutex_unlock(&data->mutex);
 			dev_err(&kraken->udev->dev,
 			        "failed to set LED cycle %u\n", i);
 			return ret ? ret : 1;
 		}
 	}
-	data->len = 0;
-	mutex_unlock(&data->mutex);
 	return 0;
+}
+
+int led_data_dyn_update(struct led_data_dyn *data, struct usb_kraken *kraken)
+{
+	struct led_msg *msg;
+	int ret, sent;
+	u8 value = data->get_value(kraken->data);
+	if (value == LED_DATA_DYN_VAL_NONE) {
+		dev_err(&kraken->udev->dev,
+		        "error getting value for dynamic LED update\n");
+		return 1;
+	}
+	// if same value as previously, no update necessary
+	if (value == data->value_prev)
+		return 0;
+
+	msg = data->value_msgs[value];
+	// if same message as previously, no update necessary
+	if (msg == data->msg_prev)
+		return 0;
+	ret = usb_interrupt_msg(kraken->udev, usb_sndctrlpipe(kraken->udev, 1),
+	                        msg->msg, LED_MSG_SIZE, &sent, 1000);
+	if (ret || sent != LED_MSG_SIZE) {
+		dev_err(&kraken->udev->dev,
+		        "failed to set LED dynamically for value %u\n", value);
+		return ret ? ret : 1;
+	}
+	data->value_prev = value;
+	data->msg_prev = msg;
+	return 0;
+}
+
+int kraken_x62_update_led(struct usb_kraken *kraken, struct led_data *data)
+{
+	int ret = 0;
+	mutex_lock(&data->mutex);
+	switch (data->type) {
+	case LED_DATA_TYPE_NONE:
+		break;
+	case LED_DATA_TYPE_REG:
+		ret = led_data_reg_update(&data->reg, kraken);
+		data->type = LED_DATA_TYPE_NONE;
+		break;
+	case LED_DATA_TYPE_DYN:
+		ret = led_data_dyn_update(&data->dyn, kraken);
+		break;
+	}
+	mutex_unlock(&data->mutex);
+	return ret;
 }

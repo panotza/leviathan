@@ -5,7 +5,7 @@
 
 #include <linux/mutex.h>
 
-#define STATUS_DATA_MSG_SIZE 17
+#define STATUS_DATA_MSG_SIZE ((size_t) 17)
 
 struct status_data {
 	u8 msg[STATUS_DATA_MSG_SIZE];

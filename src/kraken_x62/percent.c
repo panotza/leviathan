@@ -10,7 +10,7 @@ const u8 PERCENT_MSG_HEADER[] = {
 
 void percent_data_init(struct percent_data *data, u8 type_byte)
 {
-	memcpy(data->msg, PERCENT_MSG_HEADER, sizeof(PERCENT_MSG_HEADER));
+	memcpy(data->msg, PERCENT_MSG_HEADER, ARRAY_SIZE(PERCENT_MSG_HEADER));
 	data->msg[2] = type_byte;
 	mutex_init(&data->mutex);
 }

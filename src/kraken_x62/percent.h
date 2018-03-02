@@ -5,7 +5,7 @@
 
 #include <linux/mutex.h>
 
-#define PERCENT_MSG_SIZE 5
+#define PERCENT_MSG_SIZE ((size_t) 5)
 
 struct percent_data {
 	u8 msg[PERCENT_MSG_SIZE];

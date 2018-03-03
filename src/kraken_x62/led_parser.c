@@ -261,7 +261,7 @@ void led_parser_dyn_to_data(struct led_parser_dyn *parser,
 {
 	size_t i;
 	u8 j;
-	data->get_value = parser->get_value;
+	memcpy(&data->value, &parser->value, sizeof(data->value));
 	// first fill value_msgs with the default message
 	for (i = 0; i <= LED_DATA_DYN_VAL_MAX; i++) {
 		data->value_msgs[i] = &data->msg_default;
@@ -280,19 +280,48 @@ void led_parser_dyn_to_data(struct led_parser_dyn *parser,
 	data->msg_prev = NULL;
 }
 
-static u8 led_data_dyn_temp_liquid(struct kraken_driver_data *driver_data)
+static u8 led_data_dyn_temp_liquid(void *state,
+                                   struct kraken_driver_data *driver_data)
 {
 	return status_data_temp_liquid(&driver_data->status);
 }
 
-static u8 led_data_dyn_percent_fan(struct kraken_driver_data *driver_data)
+static u8 led_data_dyn_value_normalized(u64 value, void *state)
 {
-	return percent_data_get(&driver_data->percent_fan);
+	u64 *max = state;
+	u64 normalized = value * 100 / *max;
+	if (normalized > LED_DATA_DYN_VAL_MAX)
+		normalized = LED_DATA_DYN_VAL_MAX;
+	return normalized;
 }
 
-static u8 led_data_dyn_percent_pump(struct kraken_driver_data *driver_data)
+static u8 led_data_dyn_fan_rpm(void *state,
+                               struct kraken_driver_data *driver_data)
 {
-	return percent_data_get(&driver_data->percent_pump);
+	const u16 rpm = status_data_fan_rpm(&driver_data->status);
+	return led_data_dyn_value_normalized(rpm, state);
+}
+
+static u8 led_data_dyn_pump_rpm(void *state,
+                                struct kraken_driver_data *driver_data)
+{
+	const u16 rpm = status_data_pump_rpm(&driver_data->status);
+	return led_data_dyn_value_normalized(rpm, state);
+}
+
+static int led_parser_dyn_source_normalized(const char **buf, void *state)
+{
+	u64 *max = state;
+	unsigned long long max_ull;
+	char max_str[WORD_LEN_MAX + 1];
+	int ret = str_scan_word(buf, max_str);
+	if (ret)
+		return ret;
+	ret = kstrtoull(max_str, 0, &max_ull);
+	if (ret)
+		return ret;
+	*max = max_ull;
+	return 0;
 }
 
 static int led_parser_dyn_source(struct led_parser_dyn *parser,
@@ -305,18 +334,26 @@ static int led_parser_dyn_source(struct led_parser_dyn *parser,
 		        parser->attr->attr.name);
 		return ret;
 	}
+	ret = 0;
 	if (strcasecmp(source, "temp_liquid") == 0) {
-		parser->get_value = led_data_dyn_temp_liquid;
-	} else if (strcasecmp(source, "percent_fan") == 0) {
-		parser->get_value = led_data_dyn_percent_fan;
-	} else if (strcasecmp(source, "percent_pump") == 0) {
-		parser->get_value = led_data_dyn_percent_pump;
+		parser->value.get = led_data_dyn_temp_liquid;
+	} else if (strcasecmp(source, "fan_rpm") == 0) {
+		parser->value.get = led_data_dyn_fan_rpm;
+		ret = led_parser_dyn_source_normalized(buf,
+		                                       parser->value.state);
+	} else if (strcasecmp(source, "pump_rpm") == 0) {
+		parser->value.get = led_data_dyn_pump_rpm;
+		ret = led_parser_dyn_source_normalized(buf,
+		                                       parser->value.state);
 	} else {
 		dev_err(parser->dev, "%s: illegal source: %s\n",
 		        parser->attr->attr.name, source);
 		return 1;
 	}
-	return 0;
+	if (ret)
+		dev_err(parser->dev, "%s: failed to parse source %s: %d\n",
+		        parser->attr->attr.name, source, ret);
+	return ret;
 }
 
 static int led_parser_dyn_ranges(struct led_parser_dyn *parser,

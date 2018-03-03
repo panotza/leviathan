@@ -55,7 +55,7 @@ struct led_parser_dyn {
 	struct device *dev;
 	struct device_attribute *attr;
 
-	led_data_dyn_value_fn *get_value;
+	struct led_data_dyn_val value;
 	u8 range_mins[LED_DATA_DYN_MSGS_SIZE];
 	u8 range_maxes[LED_DATA_DYN_MSGS_SIZE];
 

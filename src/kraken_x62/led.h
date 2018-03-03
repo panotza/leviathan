@@ -88,27 +88,33 @@ struct led_data_reg {
 /**
  * Represents no value for led_data_dyn.  Not withing the range of legal values.
  */
-#define LED_DATA_DYN_VAL_NONE  U8_MAX
+#define LED_DATA_DYN_VAL_NONE U8_MAX
 
 /**
  * Legal values for led_data_dyn are in [0, LED_DATA_DYN_VAL_MAX].
  */
-#define LED_DATA_DYN_VAL_MAX   ((u8) LED_DATA_DYN_VAL_NONE - 1)
+#define LED_DATA_DYN_VAL_MAX  ((u8) LED_DATA_DYN_VAL_NONE - 1)
+
+#define LED_DATA_DYN_VAL_STATE_SIZE ((size_t) 32)
+
+struct led_data_dyn_val {
+	// gets the dynamic value when called by the update function; must
+	// return LED_DATA_DYN_NONE iff an error occurs
+	u8 (*get)(void *state, struct kraken_driver_data *driver_data);
+	// any state needed by get may be stored here
+	u8 state[LED_DATA_DYN_VAL_STATE_SIZE];
+};
 
 /**
  * Max nr of messages that can be stored in a led_data_dyn.
  */
 #define LED_DATA_DYN_MSGS_SIZE ((size_t) 64)
 
-typedef u8 led_data_dyn_value_fn(struct kraken_driver_data *driver_data);
-
 /**
  * Dynamic LED update data, sent on each update based on a value.
  */
 struct led_data_dyn {
-	// gets the dynamic value when called by the update function; must
-	// return LED_DATA_DYN_NONE iff an error occurs
-	led_data_dyn_value_fn *get_value;
+	struct led_data_dyn_val value;
 	// value_msgs[val] is the message to send for value val; each element
 	// points either to an element of msgs or to msg_default
 	struct led_msg *value_msgs[LED_DATA_DYN_VAL_MAX + 1];

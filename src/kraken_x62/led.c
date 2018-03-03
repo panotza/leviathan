@@ -241,7 +241,7 @@ int led_data_dyn_update(struct led_data_dyn *data, struct usb_kraken *kraken)
 {
 	struct led_msg *msg;
 	int ret, sent;
-	u8 value = data->get_value(kraken->data);
+	u8 value = data->value.get(data->value.state, kraken->data);
 	if (value == LED_DATA_DYN_VAL_NONE) {
 		dev_err(&kraken->udev->dev,
 		        "error getting value for dynamic LED update\n");

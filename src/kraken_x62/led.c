@@ -13,7 +13,7 @@ const u8 LED_MSG_HEADER[] = {
 
 static void led_msg_init(struct led_msg *msg)
 {
-	memcpy(msg->msg, LED_MSG_HEADER, ARRAY_SIZE(LED_MSG_HEADER));
+	memcpy(msg->msg, LED_MSG_HEADER, sizeof(LED_MSG_HEADER));
 }
 
 static void led_msg_which(struct led_msg *msg, enum led_which which)
@@ -176,7 +176,7 @@ void led_msg_colors_ring(struct led_msg *msg, const struct led_color *colors)
 static void led_data_reg_init(struct led_data_reg *data, enum led_which which)
 {
 	u8 i;
-	for (i = 0; i < LED_DATA_CYCLES_SIZE; i++) {
+	for (i = 0; i < ARRAY_SIZE(data->cycles); i++) {
 		led_msg_init(&data->cycles[i]);
 		led_msg_which(&data->cycles[i], which);
 		led_msg_cycle(&data->cycles[i], i);
@@ -197,13 +197,13 @@ static void led_msg_default_all(struct led_msg *msg)
 static void led_data_dyn_init(struct led_data_dyn *data, enum led_which which)
 {
 	u8 i;
-	for (i = 0; i < LED_DATA_DYN_MSGS_SIZE; i++) {
+	for (i = 0; i < ARRAY_SIZE(data->msgs); i++) {
 		struct led_msg *msg = &data->msgs[i];
 		led_msg_init(msg);
 		led_msg_which(msg, which);
 		led_msg_default_all(msg);
 	}
-	memset(data->msg_default.msg, 0, ARRAY_SIZE(data->msg_default.msg));
+	memset(data->msg_default.msg, 0, sizeof(data->msg_default.msg));
 	led_msg_init(&data->msg_default);
 	led_msg_which(&data->msg_default, which);
 	led_msg_default_all(&data->msg_default);
@@ -227,8 +227,9 @@ int led_data_reg_update(struct led_data_reg *data, struct usb_kraken *kraken)
 	for (i = 0; i < data->len; i++) {
 		ret = usb_interrupt_msg(
 			kraken->udev, usb_sndctrlpipe(kraken->udev, 1),
-			data->cycles[i].msg, LED_MSG_SIZE, &sent, 1000);
-		if (ret || sent != LED_MSG_SIZE) {
+			data->cycles[i].msg, sizeof(data->cycles[i].msg),
+			&sent, 1000);
+		if (ret || sent != sizeof(data->cycles[i].msg)) {
 			dev_err(&kraken->udev->dev,
 			        "failed to set LED cycle %u\n", i);
 			return ret ? ret : 1;
@@ -256,8 +257,8 @@ int led_data_dyn_update(struct led_data_dyn *data, struct usb_kraken *kraken)
 	if (msg == data->msg_prev)
 		return 0;
 	ret = usb_interrupt_msg(kraken->udev, usb_sndctrlpipe(kraken->udev, 1),
-	                        msg->msg, LED_MSG_SIZE, &sent, 1000);
-	if (ret || sent != LED_MSG_SIZE) {
+	                        msg->msg, sizeof(msg->msg), &sent, 1000);
+	if (ret || sent != sizeof(msg->msg)) {
 		dev_err(&kraken->udev->dev,
 		        "failed to set LED dynamically for value %u\n", value);
 		return ret ? ret : 1;

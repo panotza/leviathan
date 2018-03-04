@@ -263,7 +263,7 @@ void led_parser_dyn_to_data(struct led_parser_dyn *parser,
 	u8 j;
 	memcpy(&data->value, &parser->value, sizeof(data->value));
 	// first fill value_msgs with the default message
-	for (i = 0; i <= LED_DATA_DYN_VAL_MAX; i++) {
+	for (i = 0; i < ARRAY_SIZE(data->value_msgs); i++) {
 		data->value_msgs[i] = &data->msg_default;
 	}
 	// for each range

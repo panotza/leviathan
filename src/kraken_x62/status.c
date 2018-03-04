@@ -67,22 +67,21 @@ int kraken_x62_update_status(struct usb_kraken *kraken,
 	int received;
 	int ret;
 	mutex_lock(&data->mutex);
-	ret = usb_interrupt_msg(
-		kraken->udev, usb_rcvctrlpipe(kraken->udev, 1),
-		data->msg, STATUS_DATA_MSG_SIZE, &received, 1000);
+	ret = usb_interrupt_msg(kraken->udev, usb_rcvctrlpipe(kraken->udev, 1),
+	                        data->msg, sizeof(data->msg), &received, 1000);
 	mutex_unlock(&data->mutex);
 
-	if (ret || received != STATUS_DATA_MSG_SIZE) {
+	if (ret || received != sizeof(data->msg)) {
 		dev_err(&kraken->udev->dev,
 		        "failed status update: I/O error\n");
 		return ret ? ret : 1;
 	}
-	if (memcmp(data->msg + 0, MSG_HEADER, ARRAY_SIZE(MSG_HEADER)) != 0 ||
-	    memcmp(data->msg + STATUS_DATA_MSG_SIZE - ARRAY_SIZE(MSG_FOOTER),
-	           MSG_FOOTER, ARRAY_SIZE(MSG_FOOTER)) != 0) {
-		char status_hex[STATUS_DATA_MSG_SIZE * 3 + 1];
-		hex_dump_to_buffer(data->msg, STATUS_DATA_MSG_SIZE, 32, 1,
-		                   status_hex, ARRAY_SIZE(status_hex), false);
+	if (memcmp(data->msg + 0, MSG_HEADER, sizeof(MSG_HEADER)) != 0 ||
+	    memcmp(data->msg + ARRAY_SIZE(data->msg) - ARRAY_SIZE(MSG_FOOTER),
+	           MSG_FOOTER, sizeof(MSG_FOOTER)) != 0) {
+		char status_hex[sizeof(data->msg) * 3 + 1];
+		hex_dump_to_buffer(data->msg, sizeof(data->msg), 32, 1,
+		                   status_hex, sizeof(status_hex), false);
 		dev_err(&kraken->udev->dev,
 		        "received invalid status message: %s\n", status_hex);
 		return 1;

@@ -10,7 +10,7 @@ const u8 PERCENT_MSG_HEADER[] = {
 
 void percent_data_init(struct percent_data *data, u8 type_byte)
 {
-	memcpy(data->msg, PERCENT_MSG_HEADER, ARRAY_SIZE(PERCENT_MSG_HEADER));
+	memcpy(data->msg, PERCENT_MSG_HEADER, sizeof(PERCENT_MSG_HEADER));
 	data->msg[2] = type_byte;
 	mutex_init(&data->mutex);
 }
@@ -43,11 +43,11 @@ int kraken_x62_update_percent(struct usb_kraken *kraken,
 		return 0;
 	}
 	ret = usb_interrupt_msg(kraken->udev, usb_sndctrlpipe(kraken->udev, 1),
-	                        data->msg, PERCENT_MSG_SIZE, &sent, 1000);
+	                        data->msg, sizeof(data->msg), &sent, 1000);
 	data->update = false;
 	mutex_unlock(&data->mutex);
 
-	if (ret || sent != PERCENT_MSG_SIZE) {
+	if (ret || sent != sizeof(data->msg)) {
 		dev_err(&kraken->udev->dev,
 		        "failed to set speed percent: I/O error\n");
 		return ret ? ret : 1;

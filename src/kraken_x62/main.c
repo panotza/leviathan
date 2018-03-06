@@ -138,270 +138,50 @@ static ssize_t pump_percent_store(struct device *dev,
 
 static DEVICE_ATTR_RW(pump_percent);
 
-static bool led_logo_preset_legal(struct led_parser_reg *parser)
-{
-	switch (parser->preset) {
-	case LED_PRESET_FIXED:
-	case LED_PRESET_FADING:
-	case LED_PRESET_SPECTRUM_WAVE:
-	case LED_PRESET_COVERING_MARQUEE:
-	case LED_PRESET_BREATHING:
-	case LED_PRESET_PULSE:
-		return true;
-	default:
-		return false;
-	}
-}
-
-static enum led_parser_ret led_logo_parse_key(struct led_parser_reg *parser,
-                                              const char *key, const char **buf)
-{
-	struct led_color *cycle_colors = parser->cycles_data;
-	char color[WORD_LEN_MAX + 1];
-	int ret;
-
-	if (strcasecmp(key, "color") != 0)
-		return LED_PARSER_RET_KEY;
-	ret = str_scan_word(buf, color);
-	if (ret)
-		return LED_PARSER_RET_VALUE_MISSING;
-	ret = led_color_from_str(&cycle_colors[parser->cycles], color);
-	if (ret)
-		return LED_PARSER_RET_VALUE_INVALID;
-	return LED_PARSER_RET_OK;
-}
-
-static void led_logo_to_data(struct led_parser_reg *parser,
-                             struct led_data_reg *data)
-{
-	struct led_color *cycle_colors = parser->cycles_data;
-	u8 i;
-	for (i = 0; i < parser->cycles; i++) {
-		led_msg_color_logo(&data->cycles[i], &cycle_colors[i]);
-	}
-}
-
 static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
                               const char *buf, size_t count)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	struct led_data *led = &kraken->data->led_logo;
 
 	int ret;
-	struct led_color cycle_colors[LED_DATA_CYCLES_SIZE];
-	struct led_parser_reg parser = {
+	struct led_parser parser = {
+		.data = &kraken->data->led_logo,
+		.buf = buf,
 		.dev = dev,
-		.attr = attr,
-		.preset_legal = led_logo_preset_legal,
-		.cycles_data = cycle_colors,
-		.cycles_data_parse_key = led_logo_parse_key,
-		.cycles_data_to_data = led_logo_to_data,
+		.attr = attr->attr.name,
 	};
-	led_parser_reg_init(&parser);
-	ret = led_parser_reg_parse(&parser, buf);
+	mutex_lock(&parser.data->mutex);
+	ret = led_parser_parse(&parser);
+	mutex_unlock(&parser.data->mutex);
 	if (ret)
 		return -EINVAL;
-
-	mutex_lock(&led->mutex);
-	led->type = LED_DATA_TYPE_REG;
-	led_parser_reg_to_data(&parser, &led->reg);
-	mutex_unlock(&led->mutex);
 	return count;
 }
 
 static DEVICE_ATTR_WO(led_logo);
-
-static enum led_parser_ret led_logo_dyn_parse(struct led_parser_dyn *parser,
-                                              const char **buf)
-{
-	struct led_color *range_colors = parser->ranges_data;
-	char color[WORD_LEN_MAX + 1];
-	int ret = str_scan_word(buf, color);
-	if (ret)
-		return LED_PARSER_RET_VALUE_MISSING;
-	ret = led_color_from_str(&range_colors[parser->ranges], color);
-	if (ret)
-		return LED_PARSER_RET_VALUE_INVALID;
-	return 0;
-}
-
-static void led_logo_dyn_to_msg(struct led_parser_dyn *parser, size_t range,
-                                struct led_msg *msg)
-{
-	struct led_color *range_colors = parser->ranges_data;
-	led_msg_color_logo(msg, &range_colors[range]);
-}
-
-static ssize_t led_logo_dyn_store(struct device *dev,
-                                  struct device_attribute *attr,
-                                  const char *buf, size_t count)
-{
-	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	struct led_data *led = &kraken->data->led_logo;
-
-	int ret;
-	struct led_color range_colors[LED_DATA_DYN_MSGS_SIZE];
-	struct led_parser_dyn parser = {
-		.dev = dev,
-		.attr = attr,
-		.ranges_data = range_colors,
-		.ranges_data_parse = led_logo_dyn_parse,
-		.ranges_data_to_msg = led_logo_dyn_to_msg,
-	};
-	led_parser_dyn_init(&parser);
-	ret = led_parser_dyn_parse(&parser, buf);
-	if (ret)
-		return -EINVAL;
-
-	mutex_lock(&led->mutex);
-	led->type = LED_DATA_TYPE_DYN;
-	led_parser_dyn_to_data(&parser, &led->dyn);
-	mutex_unlock(&led->mutex);
-	return count;
-}
-
-static DEVICE_ATTR_WO(led_logo_dyn);
-
-static bool leds_ring_preset_legal(struct led_parser_reg *parser)
-{
-	// ring LEDs may be set to any of the presets
-	return true;
-}
-
-static enum led_parser_ret leds_ring_parse_key(struct led_parser_reg *parser,
-                                               const char *key,
-                                               const char **buf)
-{
-	// NOTE: this must be a pointer to arrays of size LED_MSG_COLORS_RING; a
-	// pointer to pointer to struct doesn't work here because store->custom
-	// points to a 2-dimensional array, not an array of pointers
-	struct led_color (*cycle_colors)[LED_MSG_COLORS_RING]
-		= parser->cycles_data;
-	char color[WORD_LEN_MAX + 1];
-	struct led_color *colors;
-	size_t i;
-	int ret;
-
-	if (strcasecmp(key, "colors") != 0)
-		return LED_PARSER_RET_KEY;
-	colors = cycle_colors[parser->cycles];
-	for (i = 0; i < LED_MSG_COLORS_RING; i++) {
-		ret = str_scan_word(buf, color);
-		if (ret)
-			return (i == 0) ? LED_PARSER_RET_VALUE_MISSING
-				: LED_PARSER_RET_VALUE_INVALID;
-		ret = led_color_from_str(&colors[i], color);
-		if (ret)
-			return LED_PARSER_RET_VALUE_INVALID;
-	}
-	return LED_PARSER_RET_OK;
-}
-
-static void leds_ring_to_data(struct led_parser_reg *parser,
-                              struct led_data_reg *data)
-{
-	struct led_color (*cycle_colors)[LED_MSG_COLORS_RING]
-		= parser->cycles_data;
-	u8 i;
-	for (i = 0; i < parser->cycles; i++) {
-		led_msg_colors_ring(&data->cycles[i], cycle_colors[i]);
-	}
-}
 
 static ssize_t leds_ring_store(struct device *dev,
                                struct device_attribute *attr, const char *buf,
                                size_t count)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	struct led_data *leds = &kraken->data->leds_ring;
 
 	int ret;
-	struct led_color
-		cycle_colors[LED_DATA_CYCLES_SIZE][LED_MSG_COLORS_RING];
-	struct led_parser_reg parser = {
+	struct led_parser parser = {
+		.data = &kraken->data->leds_ring,
+		.buf = buf,
 		.dev = dev,
-		.attr = attr,
-		.preset_legal = leds_ring_preset_legal,
-		.cycles_data = cycle_colors,
-		.cycles_data_parse_key = leds_ring_parse_key,
-		.cycles_data_to_data = leds_ring_to_data,
+		.attr = attr->attr.name,
 	};
-	led_parser_reg_init(&parser);
-	ret = led_parser_reg_parse(&parser, buf);
+	mutex_lock(&parser.data->mutex);
+	ret = led_parser_parse(&parser);
+	mutex_unlock(&parser.data->mutex);
 	if (ret)
 		return -EINVAL;
-
-	mutex_lock(&leds->mutex);
-	leds->type = LED_DATA_TYPE_REG;
-	led_parser_reg_to_data(&parser, &leds->reg);
-	mutex_unlock(&leds->mutex);
 	return count;
 }
 
 static DEVICE_ATTR_WO(leds_ring);
-
-static enum led_parser_ret leds_ring_dyn_parse(struct led_parser_dyn *parser,
-                                               const char **buf)
-{
-	struct led_color (*range_colors)[LED_MSG_COLORS_RING]
-		= parser->ranges_data;
-	char color[WORD_LEN_MAX + 1];
-	struct led_color *colors = range_colors[parser->ranges];
-	size_t i;
-	for (i = 0; i < LED_MSG_COLORS_RING; i++) {
-		int ret = str_scan_word(buf, color);
-		if (ret)
-			return (i == 0) ? LED_PARSER_RET_VALUE_MISSING
-				: LED_PARSER_RET_VALUE_INVALID;
-		ret = led_color_from_str(&colors[i], color);
-		if (ret)
-			return LED_PARSER_RET_VALUE_INVALID;
-	}
-	return LED_PARSER_RET_OK;
-}
-
-static void leds_ring_dyn_to_msg(struct led_parser_dyn *parser, size_t range,
-                                 struct led_msg *msg)
-{
-	struct led_color (*range_colors)[LED_MSG_COLORS_RING]
-		= parser->ranges_data;
-	led_msg_colors_ring(msg, range_colors[range]);
-}
-
-static ssize_t leds_ring_dyn_store(struct device *dev,
-                                   struct device_attribute *attr,
-                                   const char *buf, size_t count)
-{
-	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	struct led_data *leds = &kraken->data->leds_ring;
-
-	int ret;
-	struct led_parser_dyn parser = {
-		.dev = dev,
-		.attr = attr,
-		.ranges_data_parse = leds_ring_dyn_parse,
-		.ranges_data_to_msg = leds_ring_dyn_to_msg,
-	};
-	struct led_color
-		range_colors[LED_DATA_DYN_MSGS_SIZE][LED_MSG_COLORS_RING];
-	if (range_colors == NULL)
-		return -ENOMEM;
-	parser.ranges_data = range_colors,
-
-	led_parser_dyn_init(&parser);
-	ret = led_parser_dyn_parse(&parser, buf);
-	if (ret) {
-		return -EINVAL;
-	}
-
-	mutex_lock(&leds->mutex);
-	leds->type = LED_DATA_TYPE_DYN;
-	led_parser_dyn_to_data(&parser, &leds->dyn);
-	mutex_unlock(&leds->mutex);
-	return count;
-}
-
-static DEVICE_ATTR_WO(leds_ring_dyn);
 
 int kraken_driver_create_device_files(struct usb_interface *interface)
 {
@@ -422,20 +202,11 @@ int kraken_driver_create_device_files(struct usb_interface *interface)
 		goto error_pump_percent;
 	if ((ret = device_create_file(&interface->dev, &dev_attr_led_logo)))
 		goto error_led_logo;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_led_logo_dyn)))
-		goto error_led_logo_dyn;
 	if ((ret = device_create_file(&interface->dev, &dev_attr_leds_ring)))
 		goto error_leds_ring;
-	if ((ret = device_create_file(&interface->dev,
-	                              &dev_attr_leds_ring_dyn)))
-		goto error_leds_ring_dyn;
 
 	return 0;
-error_leds_ring_dyn:
-	device_remove_file(&interface->dev, &dev_attr_leds_ring);
 error_leds_ring:
-	device_remove_file(&interface->dev, &dev_attr_led_logo_dyn);
-error_led_logo_dyn:
 	device_remove_file(&interface->dev, &dev_attr_led_logo);
 error_led_logo:
 	device_remove_file(&interface->dev, &dev_attr_pump_percent);
@@ -457,9 +228,7 @@ error_serial_no:
 
 void kraken_driver_remove_device_files(struct usb_interface *interface)
 {
-	device_remove_file(&interface->dev, &dev_attr_leds_ring_dyn);
 	device_remove_file(&interface->dev, &dev_attr_leds_ring);
-	device_remove_file(&interface->dev, &dev_attr_led_logo_dyn);
 	device_remove_file(&interface->dev, &dev_attr_led_logo);
 	device_remove_file(&interface->dev, &dev_attr_pump_percent);
 	device_remove_file(&interface->dev, &dev_attr_fan_percent);

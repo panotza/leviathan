@@ -17,15 +17,25 @@ enum led_which {
 	LED_WHICH_RING = 0b010,
 };
 
+enum led_which led_msg_which_get(const struct led_msg *msg);
+
+#define LED_MOVING_DEFAULT false
+
+int led_moving_from_str(bool *moving, const char *str);
 void led_msg_moving(struct led_msg *msg, bool moving);
+bool led_msg_moving_is_legal(const struct led_msg *msg, bool moving);
 
 enum led_direction {
 	LED_DIRECTION_CLOCKWISE        = 0b0000,
 	LED_DIRECTION_COUNTERCLOCKWISE = 0b0001,
 };
 
+#define LED_DIRECTION_DEFAULT LED_DIRECTION_CLOCKWISE
+
 int led_direction_from_str(enum led_direction *direction, const char *str);
 void led_msg_direction(struct led_msg *msg, enum led_direction direction);
+bool led_msg_direction_is_legal(const struct led_msg *msg,
+                                enum led_direction direction);
 
 enum led_preset {
 	LED_PRESET_FIXED            = 0x00,
@@ -43,6 +53,8 @@ enum led_preset {
 
 int led_preset_from_str(enum led_preset *preset, const char *str);
 void led_msg_preset(struct led_msg *msg, enum led_preset preset);
+enum led_preset led_msg_preset_get(const struct led_msg *msg);
+bool led_msg_preset_is_legal(const struct led_msg *msg, enum led_preset preset);
 
 enum led_interval {
 	LED_INTERVAL_SLOWEST = 0b000,
@@ -52,10 +64,18 @@ enum led_interval {
 	LED_INTERVAL_FASTEST = 0b100,
 };
 
+#define LED_INTERVAL_DEFAULT LED_INTERVAL_NORMAL
+
 int led_interval_from_str(enum led_interval *interval, const char *str);
 void led_msg_interval(struct led_msg *msg, enum led_interval interval);
+bool led_msg_interval_is_legal(const struct led_msg *msg,
+                               enum led_interval interval);
 
+#define LED_GROUP_SIZE_DEFAULT ((u8) 3)
+
+int led_group_size_from_str(u8 *group_size, const char *str);
 void led_msg_group_size(struct led_msg *msg, u8 group_size);
+bool led_msg_group_size_is_legal(const struct led_msg *msg, u8 group_size);
 
 struct led_color {
 	u8 red;
@@ -68,72 +88,49 @@ int led_color_from_str(struct led_color *color, const char *str);
 void led_msg_color_logo(struct led_msg *msg, const struct led_color *color);
 void led_msg_colors_ring(struct led_msg *msg, const struct led_color *colors);
 
-enum led_data_type {
-	LED_DATA_TYPE_NONE,
-	LED_DATA_TYPE_REG,
-	LED_DATA_TYPE_DYN,
-};
 
-#define LED_DATA_CYCLES_SIZE ((size_t) 8)
+#define LED_BATCH_CYCLES_SIZE ((size_t) 8)
 
 /**
- * Regular LED update data, only sent once.
+ * A batch of 1 or more update messages -- one message per cycle.
  */
-struct led_data_reg {
-	struct led_msg cycles[LED_DATA_CYCLES_SIZE];
+struct led_batch {
+	struct led_msg cycles[LED_BATCH_CYCLES_SIZE];
 	// first len messages in `cycles` are to be sent when updating
 	u8 len;
 };
 
 /**
- * Represents no value for led_data_dyn.  Not withing the range of legal values.
+ * Legal values for led_data_val are in [0, LED_DATA_VAL_MAX].
  */
-#define LED_DATA_DYN_VAL_NONE U8_MAX
+#define LED_DATA_VAL_MAX        ((s8) 100)
 
-/**
- * Legal values for led_data_dyn are in [0, LED_DATA_DYN_VAL_MAX].
- */
-#define LED_DATA_DYN_VAL_MAX  ((u8) LED_DATA_DYN_VAL_NONE - 1)
+#define LED_DATA_VAL_STATE_SIZE ((size_t) 32)
 
-#define LED_DATA_DYN_VAL_STATE_SIZE ((size_t) 32)
-
-struct led_data_dyn_val {
+struct led_data_val {
 	// gets the dynamic value when called by the update function; must
-	// return LED_DATA_DYN_NONE iff an error occurs
-	u8 (*get)(void *state, struct kraken_driver_data *driver_data);
+	// return negative iff an error occurs
+	s8 (*get)(void *state, struct kraken_driver_data *driver_data);
 	// any state needed by get may be stored here
-	u8 state[LED_DATA_DYN_VAL_STATE_SIZE];
+	u8 state[LED_DATA_VAL_STATE_SIZE];
 };
 
-/**
- * Max nr of messages that can be stored in a led_data_dyn.
- */
-#define LED_DATA_DYN_MSGS_SIZE ((size_t) 64)
-
-/**
- * Dynamic LED update data, sent on each update based on a value.
- */
-struct led_data_dyn {
-	struct led_data_dyn_val value;
-	// value_msgs[val] is the message to send for value val; each element
-	// points either to an element of msgs or to msg_default
-	struct led_msg *value_msgs[LED_DATA_DYN_VAL_MAX + 1];
-	struct led_msg msgs[LED_DATA_DYN_MSGS_SIZE];
-	struct led_msg msg_default;
-	// no new message is sent if the previous value or message is equal to
-	// the current one, as an update would have no effect then
-	u8 value_prev;
-	struct led_msg *msg_prev;
+enum led_data_update {
+	LED_DATA_UPDATE_NONE,
+	LED_DATA_UPDATE_STATIC,
+	LED_DATA_UPDATE_DYNAMIC,
 };
 
 struct led_data {
-	enum led_data_type type;
-	// NOTE: not using a union here -- these structs are initialized at the
-	// start, and later only updated when needed; the space savings from a
-	// union would not be worth having to re-initialize everything each time
-	// the type is changed, forgetting which could also lead to nasty bugs
-	struct led_data_reg reg;
-	struct led_data_dyn dyn;
+	enum led_data_update update;
+	struct led_data_val value;
+	// batches[val] is the batch to send for value val
+	struct led_batch batches[LED_DATA_VAL_MAX + 1];
+
+	// no new message is sent if the previous value or batch is equal to the
+	// current one, as an update would have no effect then
+	s8 value_prev;
+	struct led_batch *batch_prev;
 	struct mutex mutex;
 };
 

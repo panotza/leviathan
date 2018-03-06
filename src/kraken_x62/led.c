@@ -22,14 +22,46 @@ static void led_msg_which(struct led_msg *msg, enum led_which which)
 	msg->msg[2] |= (u8) which;
 }
 
+enum led_which led_msg_which_get(const struct led_msg *msg)
+{
+	const enum led_which which = msg->msg[2] & 0b111;
+	return which;
+}
+
+int led_moving_from_str(bool *moving, const char *str)
+{
+	int ret;
+	if (strcasecmp(str, "*") == 0) {
+		*moving = LED_MOVING_DEFAULT;
+		return 0;
+	}
+	ret = kstrtobool(str, moving);
+	return ret;
+}
+
 void led_msg_moving(struct led_msg *msg, bool moving)
 {
 	msg->msg[2] &= ~(0b1 << 3);
 	msg->msg[2] |= ((u8) moving) << 3;
 }
 
+bool led_msg_moving_is_legal(const struct led_msg *msg, bool moving) {
+	if (moving == LED_MOVING_DEFAULT)
+		return true;
+	switch (led_msg_preset_get(msg)) {
+	case LED_PRESET_ALTERNATING:
+		return true;
+	default:
+		return false;
+	}
+}
+
 int led_direction_from_str(enum led_direction *direction, const char *str)
 {
+	if (strcasecmp(str, "*") == 0) {
+		*direction = LED_DIRECTION_DEFAULT;
+		return 0;
+	}
 	if (strcasecmp(str, "clockwise") == 0 ||
 	    strcasecmp(str, "forward") == 0)
 		*direction = LED_DIRECTION_CLOCKWISE;
@@ -48,6 +80,21 @@ void led_msg_direction(struct led_msg *msg, enum led_direction direction)
 {
 	msg->msg[2] &= ~(0b1111 << 4);
 	msg->msg[2] |= ((u8) direction) << 4;
+}
+
+bool led_msg_direction_is_legal(const struct led_msg *msg,
+                                enum led_direction direction)
+{
+	if (direction == LED_DIRECTION_DEFAULT)
+		return true;
+	switch (led_msg_preset_get(msg)) {
+	case LED_PRESET_SPECTRUM_WAVE:
+	case LED_PRESET_MARQUEE:
+	case LED_PRESET_COVERING_MARQUEE:
+		return true;
+	default:
+		return false;
+	}
 }
 
 int led_preset_from_str(enum led_preset *preset, const char *str)
@@ -84,8 +131,37 @@ void led_msg_preset(struct led_msg *msg, enum led_preset preset)
 	msg->msg[3] = (u8) preset;
 }
 
+enum led_preset led_msg_preset_get(const struct led_msg *msg)
+{
+	const enum led_preset preset = msg->msg[3];
+	return preset;
+}
+
+bool led_msg_preset_is_legal(const struct led_msg *msg, enum led_preset preset)
+{
+	// ring leds accept any preset
+	if (led_msg_which_get(msg) == LED_WHICH_RING)
+		return true;
+	// logo led accepts only the following presets:
+	switch (preset) {
+	case LED_PRESET_FIXED:
+	case LED_PRESET_FADING:
+	case LED_PRESET_SPECTRUM_WAVE:
+	case LED_PRESET_COVERING_MARQUEE:
+	case LED_PRESET_BREATHING:
+	case LED_PRESET_PULSE:
+		return true;
+	default:
+		return false;
+	}
+}
+
 int led_interval_from_str(enum led_interval *interval, const char *str)
 {
+	if (strcasecmp(str, "*") == 0) {
+		*interval = LED_INTERVAL_DEFAULT;
+		return 0;
+	}
 	if (strcasecmp(str, "slowest") == 0)
 		*interval = LED_INTERVAL_SLOWEST;
 	else if (strcasecmp(str, "slower") == 0)
@@ -107,11 +183,59 @@ void led_msg_interval(struct led_msg *msg, enum led_interval interval)
 	msg->msg[4] |= (u8) interval;
 }
 
+bool led_msg_interval_is_legal(const struct led_msg *msg,
+                               enum led_interval interval)
+{
+	if (interval == LED_INTERVAL_DEFAULT)
+		return true;
+	switch (led_msg_preset_get(msg)) {
+	case LED_PRESET_FADING:
+	case LED_PRESET_SPECTRUM_WAVE:
+	case LED_PRESET_MARQUEE:
+	case LED_PRESET_COVERING_MARQUEE:
+	case LED_PRESET_ALTERNATING:
+	case LED_PRESET_BREATHING:
+	case LED_PRESET_PULSE:
+	case LED_PRESET_TAI_CHI:
+	case LED_PRESET_WATER_COOLER:
+		return true;
+	default:
+		return false;
+	}
+}
+
+int led_group_size_from_str(u8 *group_size, const char *str)
+{
+	int ret;
+	unsigned int n;
+	if (strcasecmp(str, "*") == 0) {
+		*group_size = LED_GROUP_SIZE_DEFAULT;
+		return 0;
+	}
+	ret = kstrtouint(str, 0, &n);
+	if (ret || ret > U8_MAX)
+		return ret ? ret : 1;
+	*group_size = ret;
+	return 0;
+}
+
 void led_msg_group_size(struct led_msg *msg, u8 group_size)
 {
-	group_size = (group_size - 3) & 0b11;
+	group_size = (group_size - LED_GROUP_SIZE_DEFAULT) & 0b11;
 	msg->msg[4] &= ~(0b11 << 3);
 	msg->msg[4] |= group_size << 3;
+}
+
+bool led_msg_group_size_is_legal(const struct led_msg *msg, u8 group_size)
+{
+	if (group_size == LED_GROUP_SIZE_DEFAULT)
+		return true;
+	switch (led_msg_preset_get(msg)) {
+	case LED_PRESET_MARQUEE:
+		return true;
+	default:
+		return false;
+	}
 }
 
 static void led_msg_cycle(struct led_msg *msg, u8 cycle)
@@ -173,63 +297,38 @@ void led_msg_colors_ring(struct led_msg *msg, const struct led_color *colors)
 	}
 }
 
-static void led_data_reg_init(struct led_data_reg *data, enum led_which which)
+
+static void led_batch_init(struct led_batch *batch, enum led_which which)
 {
 	u8 i;
-	for (i = 0; i < ARRAY_SIZE(data->cycles); i++) {
-		led_msg_init(&data->cycles[i]);
-		led_msg_which(&data->cycles[i], which);
-		led_msg_cycle(&data->cycles[i], i);
-	}
-	data->len = 0;
-}
-
-static void led_msg_default_all(struct led_msg *msg)
-{
-	led_msg_moving(msg, false);
-	led_msg_direction(msg, LED_DIRECTION_CLOCKWISE);
-	led_msg_preset(msg, LED_PRESET_FIXED);
-	led_msg_interval(msg, LED_INTERVAL_NORMAL);
-	led_msg_group_size(msg, 3);
-	led_msg_cycle(msg, 0);
-}
-
-static void led_data_dyn_init(struct led_data_dyn *data, enum led_which which)
-{
-	u8 i;
-	for (i = 0; i < ARRAY_SIZE(data->msgs); i++) {
-		struct led_msg *msg = &data->msgs[i];
+	for (i = 0; i < ARRAY_SIZE(batch->cycles); i++) {
+		struct led_msg *msg = &batch->cycles[i];
 		led_msg_init(msg);
 		led_msg_which(msg, which);
-		led_msg_default_all(msg);
+		led_msg_cycle(msg, i);
 	}
-	memset(data->msg_default.msg, 0, sizeof(data->msg_default.msg));
-	led_msg_init(&data->msg_default);
-	led_msg_which(&data->msg_default, which);
-	led_msg_default_all(&data->msg_default);
-
-	data->value_prev = LED_DATA_DYN_VAL_NONE;
-	data->msg_prev = NULL;
 }
 
 void led_data_init(struct led_data *data, enum led_which which)
 {
-	data->type = LED_DATA_TYPE_NONE;
-	led_data_reg_init(&data->reg, which);
-	led_data_dyn_init(&data->dyn, which);
+	size_t i;
+	data->update = LED_DATA_UPDATE_NONE;
+	for (i = 0; i < ARRAY_SIZE(data->batches); i++) {
+		led_batch_init(&data->batches[i], which);
+	}
 	mutex_init(&data->mutex);
 }
 
-int led_data_reg_update(struct led_data_reg *data, struct usb_kraken *kraken)
+static int led_batch_update(struct led_batch *batch, struct usb_kraken *kraken)
 {
 	int ret, sent;
 	u8 i;
-	for (i = 0; i < data->len; i++) {
+	for (i = 0; i < batch->len; i++) {
 		ret = usb_interrupt_msg(
 			kraken->udev, usb_sndctrlpipe(kraken->udev, 1),
-			data->cycles[i].msg, sizeof(data->cycles[i].msg),
+			batch->cycles[i].msg, sizeof(batch->cycles[i].msg),
 			&sent, 1000);
-		if (ret || sent != sizeof(data->cycles[i].msg)) {
+		if (ret || sent != sizeof(batch->cycles[i].msg)) {
 			dev_err(&kraken->udev->dev,
 			        "failed to set LED cycle %u\n", i);
 			return ret ? ret : 1;
@@ -238,51 +337,47 @@ int led_data_reg_update(struct led_data_reg *data, struct usb_kraken *kraken)
 	return 0;
 }
 
-int led_data_dyn_update(struct led_data_dyn *data, struct usb_kraken *kraken)
+int kraken_x62_update_led(struct usb_kraken *kraken, struct led_data *data)
 {
-	struct led_msg *msg;
-	int ret, sent;
-	u8 value = data->value.get(data->value.state, kraken->data);
-	if (value == LED_DATA_DYN_VAL_NONE) {
+	struct led_batch *batch;
+	s8 value;
+	int ret = 0;
+
+	mutex_lock(&data->mutex);
+	switch (data->update) {
+	case LED_DATA_UPDATE_NONE:
+		goto error;
+	case LED_DATA_UPDATE_STATIC:
+		data->update = LED_DATA_UPDATE_NONE;
+		break;
+	case LED_DATA_UPDATE_DYNAMIC:
+		break;
+	}
+
+	value = data->value.get(data->value.state, kraken->data);
+	if (value < 0) {
 		dev_err(&kraken->udev->dev,
-		        "error getting value for dynamic LED update\n");
-		return 1;
+		        "error getting value for dynamic LED update: %d\n",
+		        value);
+		ret = value;
+		goto error;
 	}
 	// if same value as previously, no update necessary
 	if (value == data->value_prev)
-		return 0;
-
-	msg = data->value_msgs[value];
+		goto error;
+	batch = &data->batches[value];
 	// if same message as previously, no update necessary
-	if (msg == data->msg_prev)
-		return 0;
-	ret = usb_interrupt_msg(kraken->udev, usb_sndctrlpipe(kraken->udev, 1),
-	                        msg->msg, sizeof(msg->msg), &sent, 1000);
-	if (ret || sent != sizeof(msg->msg)) {
-		dev_err(&kraken->udev->dev,
-		        "failed to set LED dynamically for value %u\n", value);
-		return ret ? ret : 1;
-	}
-	data->value_prev = value;
-	data->msg_prev = msg;
-	return 0;
-}
+	if (data->batch_prev != NULL &&
+	    memcmp(batch, data->batch_prev, sizeof(*batch)) == 0)
+		goto error;
 
-int kraken_x62_update_led(struct usb_kraken *kraken, struct led_data *data)
-{
-	int ret = 0;
-	mutex_lock(&data->mutex);
-	switch (data->type) {
-	case LED_DATA_TYPE_NONE:
-		break;
-	case LED_DATA_TYPE_REG:
-		ret = led_data_reg_update(&data->reg, kraken);
-		data->type = LED_DATA_TYPE_NONE;
-		break;
-	case LED_DATA_TYPE_DYN:
-		ret = led_data_dyn_update(&data->dyn, kraken);
-		break;
-	}
+	ret = led_batch_update(batch, kraken);
+	if (ret)
+		goto error;
+	data->value_prev = value;
+	data->batch_prev = batch;
+
+error:
 	mutex_unlock(&data->mutex);
 	return ret;
 }

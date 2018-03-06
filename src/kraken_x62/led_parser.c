@@ -37,11 +37,11 @@ static int led_parser_preset_check_len(struct led_parser *parser,
 	return !ok;
 }
 
-static int led_parser_preset(struct led_parser *parser, struct led_msg *msg,
-                             u8 batch_len)
+static int led_parser_preset(struct led_parser *parser, struct led_batch *batch)
 {
 	char preset_str[WORD_LEN_MAX + 1];
 	enum led_preset preset;
+	u8 i;
 	int ret = str_scan_word(&parser->buf, preset_str);
 	if (ret) {
 		dev_err(parser->dev, "%s: missing preset\n", parser->attr);
@@ -53,22 +53,25 @@ static int led_parser_preset(struct led_parser *parser, struct led_msg *msg,
 		        preset_str);
 		return ret;
 	}
-	if (!led_msg_preset_is_legal(msg, preset)) {
+	if (!led_msg_preset_is_legal(&batch->cycles[0], preset)) {
 		dev_err(parser->dev, "%s: illegal preset %s for LED(s)\n",
 		        parser->attr, preset_str);
 		return 1;
 	}
-	ret = led_parser_preset_check_len(parser, preset, batch_len);
+	ret = led_parser_preset_check_len(parser, preset, batch->len);
 	if (ret)
 		return ret;
-	led_msg_preset(msg, preset);
+	for (i = 0; i < batch->len; i++)
+		led_msg_preset(&batch->cycles[i], preset);
 	return 0;
 }
 
-static int led_parser_moving(struct led_parser *parser, struct led_msg *msg)
+static int led_parser_moving(struct led_parser *parser,
+                             struct led_batch *batch)
 {
 	char moving_str[WORD_LEN_MAX + 1];
 	bool moving;
+	u8 i;
 	int ret = str_scan_word(&parser->buf, moving_str);
 	if (ret) {
 		dev_err(parser->dev, "%s: missing moving\n", parser->attr);
@@ -80,20 +83,23 @@ static int led_parser_moving(struct led_parser *parser, struct led_msg *msg)
 		        moving_str);
 		return ret;
 	}
-	if (!led_msg_moving_is_legal(msg, moving)) {
+	if (!led_msg_moving_is_legal(&batch->cycles[0], moving)) {
 		dev_err(parser->dev,
 		        "%s: illegal moving %d for the given preset\n",
 		        parser->attr, moving);
 		return 1;
 	}
-	led_msg_moving(msg, moving);
+	for (i = 0; i < batch->len; i++)
+		led_msg_moving(&batch->cycles[i], moving);
 	return 0;
 }
 
-static int led_parser_direction(struct led_parser *parser, struct led_msg *msg)
+static int led_parser_direction(struct led_parser *parser,
+                                struct led_batch *batch)
 {
 	char direction_str[WORD_LEN_MAX + 1];
 	enum led_direction direction;
+	u8 i;
 	int ret = str_scan_word(&parser->buf, direction_str);
 	if (ret) {
 		dev_err(parser->dev, "%s: missing direction\n", parser->attr);
@@ -105,20 +111,23 @@ static int led_parser_direction(struct led_parser *parser, struct led_msg *msg)
 		        direction_str);
 		return ret;
 	}
-	if (!led_msg_direction_is_legal(msg, direction)) {
+	if (!led_msg_direction_is_legal(&batch->cycles[0], direction)) {
 		dev_err(parser->dev,
 		        "%s: illegal direction %s for the given preset\n",
 		        parser->attr, direction_str);
 		return 1;
 	}
-	led_msg_direction(msg, direction);
+	for (i = 0; i < batch->len; i++)
+		led_msg_direction(&batch->cycles[i], direction);
 	return 0;
 }
 
-static int led_parser_interval(struct led_parser *parser, struct led_msg *msg)
+static int led_parser_interval(struct led_parser *parser,
+                               struct led_batch *batch)
 {
 	char interval_str[WORD_LEN_MAX + 1];
 	enum led_interval interval;
+	u8 i;
 	int ret = str_scan_word(&parser->buf, interval_str);
 	if (ret) {
 		dev_err(parser->dev, "%s: missing interval\n", parser->attr);
@@ -130,20 +139,23 @@ static int led_parser_interval(struct led_parser *parser, struct led_msg *msg)
 		        interval_str);
 		return ret;
 	}
-	if (!led_msg_interval_is_legal(msg, interval)) {
+	if (!led_msg_interval_is_legal(&batch->cycles[0], interval)) {
 		dev_err(parser->dev,
 		        "%s: illegal interval %s for the given preset\n",
 		        parser->attr, interval_str);
 		return 1;
 	}
-	led_msg_interval(msg, interval);
+	for (i = 0; i < batch->len; i++)
+		led_msg_interval(&batch->cycles[i], interval);
 	return 0;
 }
 
-static int led_parser_group_size(struct led_parser *parser, struct led_msg *msg)
+static int led_parser_group_size(struct led_parser *parser,
+                                 struct led_batch *batch)
 {
 	char group_size_str[WORD_LEN_MAX + 1];
 	u8 group_size;
+	u8 i;
 	int ret = str_scan_word(&parser->buf, group_size_str);
 	if (ret) {
 		dev_err(parser->dev, "%s: missing group size\n", parser->attr);
@@ -155,13 +167,14 @@ static int led_parser_group_size(struct led_parser *parser, struct led_msg *msg)
 		        parser->attr, group_size_str);
 		return ret;
 	}
-	if (!led_msg_group_size_is_legal(msg, group_size)) {
+	if (!led_msg_group_size_is_legal(&batch->cycles[0], group_size)) {
 		dev_err(parser->dev,
 		        "%s: illegal group size %u for the given preset\n",
 		        parser->attr, group_size);
 		return 1;
 	}
-	led_msg_group_size(msg, group_size);
+	for (i = 0; i < batch->len; i++)
+		led_msg_group_size(&batch->cycles[i], group_size);
 	return 0;
 }
 
@@ -209,17 +222,9 @@ static int led_parser_colors_ring(struct led_parser *parser,
 	return 0;
 }
 
-static int led_parser_msg(struct led_parser *parser, struct led_msg *msg,
-                          u8 batch_len)
+static int led_parser_colors(struct led_parser *parser, struct led_msg *msg)
 {
-	int ret;
-	if ((ret = led_parser_preset(parser, msg, batch_len)) ||
-	    (ret = led_parser_moving(parser, msg)) ||
-	    (ret = led_parser_direction(parser, msg)) ||
-	    (ret = led_parser_interval(parser, msg)) ||
-	    (ret = led_parser_group_size(parser, msg)))
-		return ret;
-
+	int ret = 0;
 	switch (led_msg_which_get(msg)) {
 	case LED_WHICH_LOGO:
 		ret = led_parser_color_logo(parser, msg);
@@ -237,9 +242,9 @@ static int led_parser_batch_off(struct led_parser *parser,
 	struct led_color colors[LED_MSG_COLORS_RING];
 	struct led_msg *msg = &batch->cycles[0];
 	batch->len = 1;
+	led_msg_preset(msg, LED_PRESET_FIXED);
 	led_msg_moving(msg, LED_MOVING_DEFAULT);
 	led_msg_direction(msg, LED_DIRECTION_DEFAULT);
-	led_msg_preset(msg, LED_PRESET_FIXED);
 	led_msg_interval(msg, LED_INTERVAL_DEFAULT);
 	led_msg_group_size(msg, LED_GROUP_SIZE_DEFAULT);
 
@@ -272,8 +277,15 @@ static int led_parser_batch(struct led_parser *parser, struct led_batch *batch)
 	}
 	batch->len = len;
 
+	if ((ret = led_parser_preset(parser, batch)) ||
+	    (ret = led_parser_moving(parser, batch)) ||
+	    (ret = led_parser_direction(parser, batch)) ||
+	    (ret = led_parser_interval(parser, batch)) ||
+	    (ret = led_parser_group_size(parser, batch)))
+		return ret;
+
 	for (i = 0; i < batch->len; i++) {
-		ret = led_parser_msg(parser, &batch->cycles[i], batch->len);
+		ret = led_parser_colors(parser, &batch->cycles[i]);
 		if (ret)
 			return ret;
 	}

@@ -238,6 +238,14 @@ bool led_msg_group_size_is_legal(const struct led_msg *msg, u8 group_size)
 	}
 }
 
+void led_msg_all_default(struct led_msg *msg)
+{
+	led_msg_moving(msg, LED_MOVING_DEFAULT);
+	led_msg_direction(msg, LED_DIRECTION_DEFAULT);
+	led_msg_interval(msg, LED_INTERVAL_DEFAULT);
+	led_msg_group_size(msg, LED_GROUP_SIZE_DEFAULT);
+}
+
 static void led_msg_cycle(struct led_msg *msg, u8 cycle)
 {
 	cycle &= 0b111;

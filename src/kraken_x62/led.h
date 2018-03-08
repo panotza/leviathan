@@ -77,6 +77,8 @@ int led_group_size_from_str(u8 *group_size, const char *str);
 void led_msg_group_size(struct led_msg *msg, u8 group_size);
 bool led_msg_group_size_is_legal(const struct led_msg *msg, u8 group_size);
 
+void led_msg_all_default(struct led_msg *msg);
+
 struct led_color {
 	u8 red;
 	u8 green;

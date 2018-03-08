@@ -243,10 +243,7 @@ static int led_parser_batch_off(struct led_parser *parser,
 	struct led_msg *msg = &batch->cycles[0];
 	batch->len = 1;
 	led_msg_preset(msg, LED_PRESET_FIXED);
-	led_msg_moving(msg, LED_MOVING_DEFAULT);
-	led_msg_direction(msg, LED_DIRECTION_DEFAULT);
-	led_msg_interval(msg, LED_INTERVAL_DEFAULT);
-	led_msg_group_size(msg, LED_GROUP_SIZE_DEFAULT);
+	led_msg_all_default(msg);
 
 	memset(colors, 0x00, sizeof(colors));
 	led_msg_color_logo(msg, &colors[0]);
@@ -361,6 +358,55 @@ static int led_parser_source_normalized(struct led_parser *parser)
 	return 0;
 }
 
+/**
+ * When parsing dynamic LED attributes, the list of batches is split up into
+ * partitions of this size, where each batch in a partition is set to the same
+ * colors, to avoid the buffer size exceeding PAGE_SIZE.
+ *
+ * NOTE: must be at least 2 to allow for the smallest page size 2^12 = 4096
+ * supported by Linux.  (The largest possible buffer contains approximately 30
+ * characters for "dynamic" plus the source, and 8 colors per partition, each 6
+ * characters plus a whitespace.  Therefore LED_PARSER_PARTITION_SIZE must be
+ * chosen such that 30 + 56 * n < PAGE_SIZE, where n is the resulting number of
+ * partitions.)
+ */
+#define LED_PARSER_PARTITION_SIZE ((size_t) 2)
+
+static int led_parser_partition(struct led_parser *parser, size_t start)
+{
+	char word[WORD_LEN_MAX + 1];
+	size_t i;
+	int ret;
+	const size_t end = min(start + LED_PARSER_PARTITION_SIZE,
+	                       (size_t) LED_DATA_VAL_MAX);
+	// read colors into first batch
+	struct led_batch *batch_start = &parser->data->batches[start];
+	ret = str_scan_word(&parser->buf, word);
+	if (ret) {
+		dev_err(parser->dev, "%s: missing colors\n", parser->attr);
+		return ret;
+	}
+	if (strcasecmp(word, "off")) {
+		led_parser_batch_off(parser, batch_start);
+	} else {
+		parser->buf -= strlen(word);
+		ret = led_parser_colors(parser, &batch_start->cycles[0]);
+		if (ret)
+			return ret;
+		led_msg_preset(&batch_start->cycles[0], LED_PRESET_FIXED);
+		led_msg_all_default(&batch_start->cycles[0]);
+		batch_start->len = 1;
+	}
+	// copy the same message into rest of batches
+	for (i = start + 1; i < end; i++) {
+		struct led_batch *batch = &parser->data->batches[i];
+		memcpy(&batch->cycles[0], &batch_start->cycles[0],
+		       sizeof(batch->cycles[0]));
+		batch->len = 1;
+	}
+	return 0;
+}
+
 static int led_parser_dynamic(struct led_parser *parser)
 {
 	char source[WORD_LEN_MAX + 1];
@@ -387,8 +433,8 @@ static int led_parser_dynamic(struct led_parser *parser)
 	if (ret)
 		return ret;
 
-	for (i = 0; i < ARRAY_SIZE(parser->data->batches); i++) {
-		ret = led_parser_batch(parser, &parser->data->batches[i]);
+	for (i = 0; i <= LED_DATA_VAL_MAX; i += LED_PARSER_PARTITION_SIZE) {
+		ret = led_parser_partition(parser, i);
 		if (ret)
 			return ret;
 	}

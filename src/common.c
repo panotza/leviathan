@@ -49,8 +49,7 @@ update_interval_store(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-static DEVICE_ATTR(update_interval, S_IRUGO | S_IWUSR | S_IWGRP,
-                   update_interval_show, update_interval_store);
+static DEVICE_ATTR_RW(update_interval);
 
 static int kraken_create_device_files(struct usb_interface *interface)
 {

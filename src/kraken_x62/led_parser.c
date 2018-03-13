@@ -442,14 +442,13 @@ static int led_parser_dynamic(struct led_parser *parser)
 	return 0;
 }
 
-
 int led_parser_parse(struct led_parser *parser)
 {
 	char update[WORD_LEN_MAX + 1];
 	int ret = str_scan_word(&parser->buf, update);
 	if (ret) {
 		dev_err(parser->dev, "%s: missing update type", parser->attr);
-		return 1;
+		goto err;
 	}
 	if (strcasecmp(update, "static") == 0) {
 		ret = led_parser_static(parser);
@@ -458,20 +457,25 @@ int led_parser_parse(struct led_parser *parser)
 	} else {
 		dev_err(parser->dev, "%s: illegal update type %s", parser->attr,
 		        update);
-		return 1;
+		ret = 1;
+		goto err;
 	}
 	if (ret)
-		return ret;
+		goto err;
 	ret = str_scan_word(&parser->buf, update);
 	if (!ret) {
 		dev_err(parser->dev,
 		        "%s: unrecognized data left in buffer: %s...\n",
 		        parser->attr, update);
-		parser->data->update = LED_DATA_UPDATE_NONE;
-		return 1;
+		ret = 1;
+		goto err;
 	}
 
 	parser->data->value_prev = -1;
 	parser->data->batch_prev = NULL;
 	return 0;
+
+err:
+	parser->data->update = LED_DATA_UPDATE_NONE;
+	return ret;
 }

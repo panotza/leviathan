@@ -386,7 +386,7 @@ static int led_parser_partition(struct led_parser *parser, size_t start)
 		dev_err(parser->dev, "%s: missing colors\n", parser->attr);
 		return ret;
 	}
-	if (strcasecmp(word, "off")) {
+	if (strcasecmp(word, "off") == 0) {
 		led_parser_batch_off(parser, batch_start);
 	} else {
 		parser->buf -= strlen(word);

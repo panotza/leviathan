@@ -71,6 +71,8 @@ void led_msg_interval(struct led_msg *msg, enum led_interval interval);
 bool led_msg_interval_is_legal(const struct led_msg *msg,
                                enum led_interval interval);
 
+#define LED_GROUP_SIZE_MIN     ((u8) 3)
+#define LED_GROUP_SIZE_MAX     ((u8) 6)
 #define LED_GROUP_SIZE_DEFAULT ((u8) 3)
 
 int led_group_size_from_str(u8 *group_size, const char *str);

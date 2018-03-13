@@ -213,9 +213,9 @@ int led_group_size_from_str(u8 *group_size, const char *str)
 		return 0;
 	}
 	ret = kstrtouint(str, 0, &n);
-	if (ret || ret > U8_MAX)
+	if (ret || n < LED_GROUP_SIZE_MIN || n > LED_GROUP_SIZE_MAX)
 		return ret ? ret : 1;
-	*group_size = ret;
+	*group_size = n;
 	return 0;
 }
 

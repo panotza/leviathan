@@ -248,8 +248,17 @@ static int percent_parser_custom(struct percent_parser *parser)
 int percent_parser_parse(struct percent_parser *parser)
 {
 	char type[WORD_LEN_MAX + 1];
-	int ret;
-	// currently only temp_liquid is implemented as a source
+	char *source = type;
+	int ret = str_scan_word(&parser->buf, source);
+	if (ret || strcasecmp(source, "temp_liquid") != 0) {
+		// (missing dynamic value source)
+		// NOTE: currently only temp_liquid is implemented as a source
+		dev_err(parser->dev, "%s: missing \"temp_liquid\"\n",
+		        parser->attr);
+		if (!ret)
+			ret = 1;
+		goto error;
+	}
 	parser->data->value.get = dynamic_val_temp_liquid;
 
 	ret = str_scan_word(&parser->buf, type);

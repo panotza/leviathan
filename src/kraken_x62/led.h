@@ -14,6 +14,7 @@ struct led_msg {
 };
 
 enum led_which {
+	LED_WHICH_SYNC = 0b000,
 	LED_WHICH_LOGO = 0b001,
 	LED_WHICH_RING = 0b010,
 };

@@ -24,6 +24,7 @@ static void kraken_driver_data_init(struct kraken_driver_data *data)
 	percent_data_init(&data->percent_pump, PERCENT_MSG_WHICH_PUMP, 50, 100);
 	led_data_init(&data->led_logo, LED_WHICH_LOGO);
 	led_data_init(&data->leds_ring, LED_WHICH_RING);
+	led_data_init(&data->leds_sync, LED_WHICH_SYNC);
 }
 
 int kraken_driver_update(struct usb_kraken *kraken)
@@ -35,7 +36,8 @@ int kraken_driver_update(struct usb_kraken *kraken)
 	    (ret = kraken_x62_update_percent(kraken, &data->percent_fan)) ||
 	    (ret = kraken_x62_update_percent(kraken, &data->percent_pump)) ||
 	    (ret = kraken_x62_update_led(kraken, &data->led_logo)) ||
-	    (ret = kraken_x62_update_led(kraken, &data->leds_ring)))
+	    (ret = kraken_x62_update_led(kraken, &data->leds_ring)) ||
+	    (ret = kraken_x62_update_led(kraken, &data->leds_sync)))
 		return ret;
 	return 0;
 }
@@ -90,15 +92,13 @@ static ssize_t unknown_1_show(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RO(unknown_1);
 
-static ssize_t fan_percent_store(struct device *dev,
-                                 struct device_attribute *attr, const char *buf,
-                                 size_t count)
+static ssize_t attr_percent_store(struct percent_data *data, struct device *dev,
+                                  struct device_attribute *attr,
+                                  const char *buf, size_t count)
 {
-	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-
 	int ret;
 	struct percent_parser parser = {
-		.data = &kraken->data->percent_fan,
+		.data = data,
 		.buf = buf,
 		.dev = dev,
 		.attr = attr->attr.name,
@@ -109,6 +109,15 @@ static ssize_t fan_percent_store(struct device *dev,
 	if (ret)
 		return -EINVAL;
 	return count;
+}
+
+static ssize_t fan_percent_store(struct device *dev,
+                                 struct device_attribute *attr, const char *buf,
+                                 size_t count)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	return attr_percent_store(&kraken->data->percent_fan, dev, attr, buf,
+	                          count);
 }
 
 static DEVICE_ATTR_WO(fan_percent);
@@ -118,32 +127,19 @@ static ssize_t pump_percent_store(struct device *dev,
                                   const char *buf, size_t count)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-
-	int ret;
-	struct percent_parser parser = {
-		.data = &kraken->data->percent_pump,
-		.buf = buf,
-		.dev = dev,
-		.attr = attr->attr.name,
-	};
-	mutex_lock(&parser.data->mutex);
-	ret = percent_parser_parse(&parser);
-	mutex_unlock(&parser.data->mutex);
-	if (ret)
-		return -EINVAL;
-	return count;
+	return attr_percent_store(&kraken->data->percent_pump, dev, attr, buf,
+	                          count);
 }
 
 static DEVICE_ATTR_WO(pump_percent);
 
-static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
-                              const char *buf, size_t count)
+static ssize_t attr_led_store(struct led_data *data, struct device *dev,
+                              struct device_attribute *attr, const char *buf,
+                              size_t count)
 {
-	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-
 	int ret;
 	struct led_parser parser = {
-		.data = &kraken->data->led_logo,
+		.data = data,
 		.buf = buf,
 		.dev = dev,
 		.attr = attr->attr.name,
@@ -154,6 +150,13 @@ static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
 	if (ret)
 		return -EINVAL;
 	return count;
+}
+
+static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
+                              const char *buf, size_t count)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	return attr_led_store(&kraken->data->led_logo, dev, attr, buf, count);
 }
 
 static DEVICE_ATTR_WO(led_logo);
@@ -163,23 +166,20 @@ static ssize_t leds_ring_store(struct device *dev,
                                size_t count)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-
-	int ret;
-	struct led_parser parser = {
-		.data = &kraken->data->leds_ring,
-		.buf = buf,
-		.dev = dev,
-		.attr = attr->attr.name,
-	};
-	mutex_lock(&parser.data->mutex);
-	ret = led_parser_parse(&parser);
-	mutex_unlock(&parser.data->mutex);
-	if (ret)
-		return -EINVAL;
-	return count;
+	return attr_led_store(&kraken->data->leds_ring, dev, attr, buf, count);
 }
 
 static DEVICE_ATTR_WO(leds_ring);
+
+static ssize_t leds_sync_store(struct device *dev,
+                               struct device_attribute *attr, const char *buf,
+                               size_t count)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	return attr_led_store(&kraken->data->leds_sync, dev, attr, buf, count);
+}
+
+static DEVICE_ATTR_WO(leds_sync);
 
 int kraken_driver_create_device_files(struct usb_interface *interface)
 {
@@ -202,8 +202,12 @@ int kraken_driver_create_device_files(struct usb_interface *interface)
 		goto error_led_logo;
 	if ((ret = device_create_file(&interface->dev, &dev_attr_leds_ring)))
 		goto error_leds_ring;
+	if ((ret = device_create_file(&interface->dev, &dev_attr_leds_sync)))
+		goto error_leds_sync;
 
 	return 0;
+error_leds_sync:
+	device_remove_file(&interface->dev, &dev_attr_leds_ring);
 error_leds_ring:
 	device_remove_file(&interface->dev, &dev_attr_led_logo);
 error_led_logo:
@@ -226,6 +230,7 @@ error_serial_no:
 
 void kraken_driver_remove_device_files(struct usb_interface *interface)
 {
+	device_remove_file(&interface->dev, &dev_attr_leds_sync);
 	device_remove_file(&interface->dev, &dev_attr_leds_ring);
 	device_remove_file(&interface->dev, &dev_attr_led_logo);
 	device_remove_file(&interface->dev, &dev_attr_pump_percent);

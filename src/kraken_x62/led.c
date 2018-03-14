@@ -142,7 +142,7 @@ bool led_msg_preset_is_legal(const struct led_msg *msg, enum led_preset preset)
 	// ring leds accept any preset
 	if (led_msg_which_get(msg) == LED_WHICH_RING)
 		return true;
-	// logo led accepts only the following presets:
+	// logo/sync leds accepts only the following presets:
 	switch (preset) {
 	case LED_PRESET_FIXED:
 	case LED_PRESET_FADING:

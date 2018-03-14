@@ -17,6 +17,7 @@ struct kraken_driver_data {
 
 	struct led_data led_logo;
 	struct led_data leds_ring;
+	struct led_data leds_sync;
 };
 
 #endif  /* LEVIATHAN_X62_DRIVER_DATA_H_INCLUDED */

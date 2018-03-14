@@ -231,6 +231,12 @@ static int led_parser_colors(struct led_parser *parser, struct led_msg *msg)
 	case LED_WHICH_RING:
 		ret = led_parser_colors_ring(parser, msg);
 		break;
+	case LED_WHICH_SYNC:
+		ret = led_parser_color_logo(parser, msg);
+		if (ret)
+			return ret;
+		ret = led_parser_colors_ring(parser, msg);
+		break;
 	}
 	return ret;
 }

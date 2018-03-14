@@ -4,7 +4,6 @@
 #include "led_parser.h"
 #include "driver_data.h"
 #include "led.h"
-#include "status.h"
 #include "../util.h"
 
 static int led_parser_preset_check_len(struct led_parser *parser,
@@ -289,72 +288,16 @@ static int led_parser_batch(struct led_parser *parser, struct led_batch *batch)
 	return 0;
 }
 
-static s8 led_data_val_const_0(void *state,
-                               struct kraken_driver_data *driver_data)
-{
-	return 0;
-}
-
 static int led_parser_static(struct led_parser *parser)
 {
 	int ret;
 	// static is implemented with a constant-0 value and the single batch
 	// being stored at index 0
-	parser->data->value.get = led_data_val_const_0;
+	parser->data->value.get = dynamic_val_const_0;
 	ret = led_parser_batch(parser, &parser->data->batches[0]);
 	if (ret)
 		return ret;
 	parser->data->update = LED_DATA_UPDATE_STATIC;
-	return 0;
-}
-
-static s8 led_data_val_temp_liquid(void *state,
-                                   struct kraken_driver_data *driver_data)
-{
-	return status_data_temp_liquid(&driver_data->status);
-}
-
-static s8 led_data_val_normalized(s64 value, void *state)
-{
-	s64 *max = state;
-	s64 normalized = value * 100 / *max;
-	if (normalized > LED_DATA_VAL_MAX)
-		normalized = LED_DATA_VAL_MAX;
-	return normalized;
-}
-
-static s8 led_data_val_fan_rpm(void *state,
-                               struct kraken_driver_data *driver_data)
-{
-	const u16 rpm = status_data_fan_rpm(&driver_data->status);
-	return led_data_val_normalized(rpm, state);
-}
-
-static s8 led_data_val_pump_rpm(void *state,
-                                struct kraken_driver_data *driver_data)
-{
-	const u16 rpm = status_data_pump_rpm(&driver_data->status);
-	return led_data_val_normalized(rpm, state);
-}
-
-static int led_parser_source_normalized(struct led_parser *parser)
-{
-	s64 *max = (s64 *) parser->data->value.state;
-	unsigned long long max_ull;
-	char max_str[WORD_LEN_MAX + 1];
-	int ret = str_scan_word(&parser->buf, max_str);
-	if (ret) {
-		dev_err(parser->dev, "%s: missing source max value\n",
-		        parser->attr);
-		return ret;
-	}
-	ret = kstrtoull(max_str, 0, &max_ull);
-	if (ret) {
-		dev_err(parser->dev, "%s: invalid source max value %s\n",
-		        parser->attr, max_str);
-		return ret;
-	}
-	*max = max_ull;
 	return 0;
 }
 
@@ -378,7 +321,7 @@ static int led_parser_partition(struct led_parser *parser, size_t start)
 	size_t i;
 	int ret;
 	const size_t end = min(start + LED_PARSER_PARTITION_SIZE,
-	                       (size_t) LED_DATA_VAL_MAX);
+	                       (size_t) DYNAMIC_VAL_MAX);
 	// read colors into first batch
 	struct led_batch *batch_start = &parser->data->batches[start];
 	ret = str_scan_word(&parser->buf, word);
@@ -409,31 +352,13 @@ static int led_parser_partition(struct led_parser *parser, size_t start)
 
 static int led_parser_dynamic(struct led_parser *parser)
 {
-	char source[WORD_LEN_MAX + 1];
 	size_t i;
-	int ret = str_scan_word(&parser->buf, source);
-	if (ret) {
-		dev_err(parser->dev, "%s: missing source\n", parser->attr);
-		return ret;
-	}
-	ret = 0;
-	if (strcasecmp(source, "temp_liquid") == 0) {
-		parser->data->value.get = led_data_val_temp_liquid;
-	} else if (strcasecmp(source, "fan_rpm") == 0) {
-		parser->data->value.get = led_data_val_fan_rpm;
-		ret = led_parser_source_normalized(parser);
-	} else if (strcasecmp(source, "pump_rpm") == 0) {
-		parser->data->value.get = led_data_val_pump_rpm;
-		ret = led_parser_source_normalized(parser);
-	} else {
-		dev_err(parser->dev, "%s: illegal source %s\n", parser->attr,
-		        source);
-		return 1;
-	}
+	int ret = dynamic_val_parse(&parser->data->value, &parser->buf,
+	                            parser->dev, parser->attr);
 	if (ret)
 		return ret;
 
-	for (i = 0; i <= LED_DATA_VAL_MAX; i += LED_PARSER_PARTITION_SIZE) {
+	for (i = 0; i <= DYNAMIC_VAL_MAX; i += LED_PARSER_PARTITION_SIZE) {
 		ret = led_parser_partition(parser, i);
 		if (ret)
 			return ret;
@@ -455,8 +380,8 @@ int led_parser_parse(struct led_parser *parser)
 	} else if (strcasecmp(update, "dynamic") == 0) {
 		ret = led_parser_dynamic(parser);
 	} else {
-		dev_err(parser->dev, "%s: illegal update type %s\n", parser->attr,
-		        update);
+		dev_err(parser->dev, "%s: illegal update type %s\n",
+		        parser->attr, update);
 		ret = 1;
 		goto error;
 	}

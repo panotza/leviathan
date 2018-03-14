@@ -7,7 +7,7 @@
 #include <linux/string.h>
 #include <linux/usb.h>
 
-const u8 LED_MSG_HEADER[] = {
+static const u8 LED_MSG_HEADER[] = {
 	0x02, 0x4c,
 };
 

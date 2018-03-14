@@ -8,10 +8,10 @@
 #include <linux/string.h>
 #include <linux/usb.h>
 
-const u8 MSG_HEADER[] = {
+static const u8 MSG_HEADER[] = {
 	0x04,
 };
-const u8 MSG_FOOTER[] = {
+static const u8 MSG_FOOTER[] = {
 	0x00, 0x00, 0x00, 0x78, 0x02, 0x00, 0x01, 0x08, 0x1e, 0x00,
 };
 

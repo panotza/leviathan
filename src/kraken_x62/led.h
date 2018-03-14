@@ -1,6 +1,7 @@
 #ifndef LEVIATHAN_X62_LED_H_INCLUDED
 #define LEVIATHAN_X62_LED_H_INCLUDED
 
+#include "dynamic.h"
 #include "../common.h"
 
 #include <linux/mutex.h>
@@ -104,21 +105,6 @@ struct led_batch {
 	u8 len;
 };
 
-/**
- * Legal values for led_data_val are in [0, LED_DATA_VAL_MAX].
- */
-#define LED_DATA_VAL_MAX        ((s8) 100)
-
-#define LED_DATA_VAL_STATE_SIZE ((size_t) 32)
-
-struct led_data_val {
-	// gets the dynamic value when called by the update function; must
-	// return negative iff an error occurs
-	s8 (*get)(void *state, struct kraken_driver_data *driver_data);
-	// any state needed by get may be stored here
-	u8 state[LED_DATA_VAL_STATE_SIZE];
-};
-
 enum led_data_update {
 	LED_DATA_UPDATE_NONE,
 	LED_DATA_UPDATE_STATIC,
@@ -127,9 +113,10 @@ enum led_data_update {
 
 struct led_data {
 	enum led_data_update update;
-	struct led_data_val value;
+	// called by update function
+	struct dynamic_val value;
 	// batches[val] is the batch to send for value val
-	struct led_batch batches[LED_DATA_VAL_MAX + 1];
+	struct led_batch batches[DYNAMIC_VAL_MAX + 1];
 
 	// no new message is sent if the previous value or batch is equal to the
 	// current one, as an update would have no effect then

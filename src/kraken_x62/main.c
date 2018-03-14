@@ -20,10 +20,8 @@
 static void kraken_driver_data_init(struct kraken_driver_data *data)
 {
 	status_data_init(&data->status);
-	percent_data_init(&data->percent_fan, 0x00);
-	percent_data_set(&data->percent_fan, PERCENT_FAN_DEFAULT);
-	percent_data_init(&data->percent_pump, 0x40);
-	percent_data_set(&data->percent_pump, PERCENT_PUMP_DEFAULT);
+	percent_data_init(&data->percent_fan, PERCENT_MSG_WHICH_FAN, 35, 100);
+	percent_data_init(&data->percent_pump, PERCENT_MSG_WHICH_PUMP, 50, 100);
 	led_data_init(&data->led_logo, LED_WHICH_LOGO);
 	led_data_init(&data->leds_ring, LED_WHICH_RING);
 }
@@ -92,36 +90,28 @@ static ssize_t unknown_1_show(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RO(unknown_1);
 
-static ssize_t fan_percent_show(struct device *dev,
-                                struct device_attribute *attr, char *buf)
-{
-	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	struct percent_data *fan = &kraken->data->percent_fan;
-	return scnprintf(buf, PAGE_SIZE, "%u\n", percent_data_get(fan));
-}
-
 static ssize_t fan_percent_store(struct device *dev,
                                  struct device_attribute *attr, const char *buf,
                                  size_t count)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 
-	int percent = percent_from(buf, PERCENT_FAN_MIN, PERCENT_FAN_MAX);
-	if (percent < 0)
-		return percent;
-	percent_data_set(&kraken->data->percent_fan, percent);
+	int ret;
+	struct percent_parser parser = {
+		.data = &kraken->data->percent_fan,
+		.buf = buf,
+		.dev = dev,
+		.attr = attr->attr.name,
+	};
+	mutex_lock(&parser.data->mutex);
+	ret = percent_parser_parse(&parser);
+	mutex_unlock(&parser.data->mutex);
+	if (ret)
+		return -EINVAL;
 	return count;
 }
 
-static DEVICE_ATTR_RW(fan_percent);
-
-static ssize_t pump_percent_show(struct device *dev,
-                                 struct device_attribute *attr, char *buf)
-{
-	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
-	struct percent_data *pump = &kraken->data->percent_pump;
-	return scnprintf(buf, PAGE_SIZE, "%u\n", percent_data_get(pump));
-}
+static DEVICE_ATTR_WO(fan_percent);
 
 static ssize_t pump_percent_store(struct device *dev,
                                   struct device_attribute *attr,
@@ -129,14 +119,22 @@ static ssize_t pump_percent_store(struct device *dev,
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 
-	int percent = percent_from(buf, PERCENT_PUMP_MIN, PERCENT_PUMP_MAX);
-	if (percent < 0)
-		return percent;
-	percent_data_set(&kraken->data->percent_pump, percent);
+	int ret;
+	struct percent_parser parser = {
+		.data = &kraken->data->percent_pump,
+		.buf = buf,
+		.dev = dev,
+		.attr = attr->attr.name,
+	};
+	mutex_lock(&parser.data->mutex);
+	ret = percent_parser_parse(&parser);
+	mutex_unlock(&parser.data->mutex);
+	if (ret)
+		return -EINVAL;
 	return count;
 }
 
-static DEVICE_ATTR_RW(pump_percent);
+static DEVICE_ATTR_WO(pump_percent);
 
 static ssize_t led_logo_store(struct device *dev, struct device_attribute *attr,
                               const char *buf, size_t count)

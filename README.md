@@ -84,4 +84,6 @@ $ cat /sys/bus/usb/drivers/$DRIVER/$DEVICE/update_interval
 $ echo $INTERVAL > /sys/bus/usb/drivers/$DRIVER/$DEVICE/update_interval
 ```
 
+## Driver-specific attributes
+
 For documentation of the driver-specific attributes, see the files in [doc/drivers/](doc/drivers/).

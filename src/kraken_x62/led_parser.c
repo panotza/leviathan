@@ -30,9 +30,9 @@ static int led_parser_preset_check_len(struct led_parser *parser,
 		break;
 	}
 	if (!ok)
-		dev_err(parser->dev,
-		        "%s: invalid nr of cycles %u for given preset\n",
-		        parser->attr, batch_len);
+		dev_warn(parser->dev,
+		         "%s: invalid nr of cycles %u for given preset\n",
+		         parser->attr, batch_len);
 	return !ok;
 }
 
@@ -43,18 +43,18 @@ static int led_parser_preset(struct led_parser *parser, struct led_batch *batch)
 	u8 i;
 	int ret = str_scan_word(&parser->buf, preset_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing preset\n", parser->attr);
+		dev_warn(parser->dev, "%s: missing preset\n", parser->attr);
 		return ret;
 	}
 	ret = led_preset_from_str(&preset, preset_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: invalid preset %s\n", parser->attr,
-		        preset_str);
+		dev_warn(parser->dev, "%s: invalid preset %s\n", parser->attr,
+		         preset_str);
 		return ret;
 	}
 	if (!led_msg_preset_is_legal(&batch->cycles[0], preset)) {
-		dev_err(parser->dev, "%s: illegal preset %s for LED(s)\n",
-		        parser->attr, preset_str);
+		dev_warn(parser->dev, "%s: illegal preset %s for LED(s)\n",
+		         parser->attr, preset_str);
 		return 1;
 	}
 	ret = led_parser_preset_check_len(parser, preset, batch->len);
@@ -73,19 +73,19 @@ static int led_parser_moving(struct led_parser *parser,
 	u8 i;
 	int ret = str_scan_word(&parser->buf, moving_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing moving\n", parser->attr);
+		dev_warn(parser->dev, "%s: missing moving\n", parser->attr);
 		return ret;
 	}
 	ret = led_moving_from_str(&moving, moving_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: invalid moving %s\n", parser->attr,
-		        moving_str);
+		dev_warn(parser->dev, "%s: invalid moving %s\n", parser->attr,
+		         moving_str);
 		return ret;
 	}
 	if (!led_msg_moving_is_legal(&batch->cycles[0], moving)) {
-		dev_err(parser->dev,
-		        "%s: illegal moving %d for the given preset\n",
-		        parser->attr, moving);
+		dev_warn(parser->dev,
+		         "%s: illegal moving %d for the given preset\n",
+		         parser->attr, moving);
 		return 1;
 	}
 	for (i = 0; i < batch->len; i++)
@@ -101,19 +101,19 @@ static int led_parser_direction(struct led_parser *parser,
 	u8 i;
 	int ret = str_scan_word(&parser->buf, direction_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing direction\n", parser->attr);
+		dev_warn(parser->dev, "%s: missing direction\n", parser->attr);
 		return ret;
 	}
 	ret = led_direction_from_str(&direction, direction_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: invalid direction %s\n", parser->attr,
-		        direction_str);
+		dev_warn(parser->dev, "%s: invalid direction %s\n",
+		         parser->attr, direction_str);
 		return ret;
 	}
 	if (!led_msg_direction_is_legal(&batch->cycles[0], direction)) {
-		dev_err(parser->dev,
-		        "%s: illegal direction %s for the given preset\n",
-		        parser->attr, direction_str);
+		dev_warn(parser->dev,
+		         "%s: illegal direction %s for the given preset\n",
+		         parser->attr, direction_str);
 		return 1;
 	}
 	for (i = 0; i < batch->len; i++)
@@ -129,19 +129,19 @@ static int led_parser_interval(struct led_parser *parser,
 	u8 i;
 	int ret = str_scan_word(&parser->buf, interval_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing interval\n", parser->attr);
+		dev_warn(parser->dev, "%s: missing interval\n", parser->attr);
 		return ret;
 	}
 	ret = led_interval_from_str(&interval, interval_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: invalid interval %s\n", parser->attr,
-		        interval_str);
+		dev_warn(parser->dev, "%s: invalid interval %s\n", parser->attr,
+		         interval_str);
 		return ret;
 	}
 	if (!led_msg_interval_is_legal(&batch->cycles[0], interval)) {
-		dev_err(parser->dev,
-		        "%s: illegal interval %s for the given preset\n",
-		        parser->attr, interval_str);
+		dev_warn(parser->dev,
+		         "%s: illegal interval %s for the given preset\n",
+		         parser->attr, interval_str);
 		return 1;
 	}
 	for (i = 0; i < batch->len; i++)
@@ -157,19 +157,19 @@ static int led_parser_group_size(struct led_parser *parser,
 	u8 i;
 	int ret = str_scan_word(&parser->buf, group_size_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing group size\n", parser->attr);
+		dev_warn(parser->dev, "%s: missing group size\n", parser->attr);
 		return ret;
 	}
 	ret = led_group_size_from_str(&group_size, group_size_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: invalid group size %s\n",
-		        parser->attr, group_size_str);
+		dev_warn(parser->dev, "%s: invalid group size %s\n",
+		         parser->attr, group_size_str);
 		return ret;
 	}
 	if (!led_msg_group_size_is_legal(&batch->cycles[0], group_size)) {
-		dev_err(parser->dev,
-		        "%s: illegal group size %u for the given preset\n",
-		        parser->attr, group_size);
+		dev_warn(parser->dev,
+		         "%s: illegal group size %u for the given preset\n",
+		         parser->attr, group_size);
 		return 1;
 	}
 	for (i = 0; i < batch->len; i++)
@@ -183,13 +183,13 @@ static int led_parser_color_logo(struct led_parser *parser, struct led_msg *msg)
 	struct led_color color;
 	int ret = str_scan_word(&parser->buf, color_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing color\n", parser->attr);
+		dev_warn(parser->dev, "%s: missing color\n", parser->attr);
 		return ret;
 	}
 	ret = led_color_from_str(&color, color_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: invalid color %s\n", parser->attr,
-		        color_str);
+		dev_warn(parser->dev, "%s: invalid color %s\n", parser->attr,
+		         color_str);
 		return ret;
 	}
 	led_msg_color_logo(msg, &color);
@@ -206,14 +206,15 @@ static int led_parser_colors_ring(struct led_parser *parser,
 	for (i = 0; i < ARRAY_SIZE(colors); i++) {
 		ret = str_scan_word(&parser->buf, color_str);
 		if (ret) {
-			dev_err(parser->dev, (i == 0) ? "%s: missing colors\n" :
-			        "%s: invalid colors\n", parser->attr);
+			dev_warn(parser->dev,
+			         (i == 0) ? "%s: missing colors\n" :
+			         "%s: invalid colors\n", parser->attr);
 			return ret;
 		}
 		ret = led_color_from_str(&colors[i], color_str);
 		if (ret) {
-			dev_err(parser->dev, "%s: invalid colors ... %s\n",
-			        parser->attr, color_str);
+			dev_warn(parser->dev, "%s: invalid colors ... %s\n",
+			         parser->attr, color_str);
 			return ret;
 		}
 	}
@@ -242,7 +243,7 @@ static int led_parser_colors(struct led_parser *parser, struct led_msg *msg)
 }
 
 static int led_parser_batch_off(struct led_parser *parser,
-                                 struct led_batch *batch)
+                                struct led_batch *batch)
 {
 	struct led_color colors[LED_MSG_COLORS_RING];
 	struct led_msg *msg = &batch->cycles[0];
@@ -263,8 +264,8 @@ static int led_parser_batch(struct led_parser *parser, struct led_batch *batch)
 	size_t i;
 	int ret = str_scan_word(&parser->buf, len_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing nr of cycles\n",
-		        parser->attr);
+		dev_warn(parser->dev, "%s: missing nr of cycles\n",
+		         parser->attr);
 		return ret;
 	}
 	if (strcasecmp(len_str, "off") == 0) {
@@ -273,8 +274,8 @@ static int led_parser_batch(struct led_parser *parser, struct led_batch *batch)
 	}
 	ret = kstrtouint(len_str, 0, &len);
 	if (ret || len < 1 || len > LED_BATCH_CYCLES_SIZE) {
-		dev_err(parser->dev, "%s: invalid nr of cycles %s\n",
-		        parser->attr, len_str);
+		dev_warn(parser->dev, "%s: invalid nr of cycles %s\n",
+		         parser->attr, len_str);
 		return ret ? ret : 1;
 	}
 	batch->len = len;
@@ -332,7 +333,7 @@ static int led_parser_partition(struct led_parser *parser, size_t start)
 	struct led_batch *batch_start = &parser->data->batches[start];
 	ret = str_scan_word(&parser->buf, word);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing colors\n", parser->attr);
+		dev_warn(parser->dev, "%s: missing colors\n", parser->attr);
 		return ret;
 	}
 	if (strcasecmp(word, "off") == 0) {
@@ -378,7 +379,8 @@ int led_parser_parse(struct led_parser *parser)
 	char update[WORD_LEN_MAX + 1];
 	int ret = str_scan_word(&parser->buf, update);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing update type\n", parser->attr);
+		dev_warn(parser->dev, "%s: missing update type\n",
+		         parser->attr);
 		goto error;
 	}
 	if (strcasecmp(update, "static") == 0) {
@@ -386,8 +388,8 @@ int led_parser_parse(struct led_parser *parser)
 	} else if (strcasecmp(update, "dynamic") == 0) {
 		ret = led_parser_dynamic(parser);
 	} else {
-		dev_err(parser->dev, "%s: illegal update type %s\n",
-		        parser->attr, update);
+		dev_warn(parser->dev, "%s: illegal update type %s\n",
+		         parser->attr, update);
 		ret = 1;
 		goto error;
 	}
@@ -395,9 +397,9 @@ int led_parser_parse(struct led_parser *parser)
 		goto error;
 	ret = str_scan_word(&parser->buf, update);
 	if (!ret) {
-		dev_err(parser->dev,
-		        "%s: unrecognized data left in buffer: %s...\n",
-		        parser->attr, update);
+		dev_warn(parser->dev,
+		         "%s: unrecognized data left in buffer: %s...\n",
+		         parser->attr, update);
 		ret = 1;
 		goto error;
 	}

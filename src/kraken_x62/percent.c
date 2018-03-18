@@ -173,13 +173,13 @@ static int percent_parser_percent(struct percent_parser *parser, u8 *percent)
 	unsigned int percent_ui;
 	int ret = str_scan_word(&parser->buf, percent_str);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing percent\n", parser->attr);
+		dev_warn(parser->dev, "%s: missing percent\n", parser->attr);
 		return ret;
 	}
 	ret = kstrtouint(percent_str, 0, &percent_ui);
 	if (ret) {
-		dev_err(parser->dev, "%s: invalid percent %s\n", parser->attr,
-		        percent_str);
+		dev_warn(parser->dev, "%s: invalid percent %s\n", parser->attr,
+		         percent_str);
 		return ret;
 	}
 	if (percent_ui < parser->data->percent_min) {
@@ -265,10 +265,9 @@ int percent_parser_parse(struct percent_parser *parser)
 	char *source = type;
 	int ret = str_scan_word(&parser->buf, source);
 	if (ret || strcasecmp(source, "temp_liquid") != 0) {
-		// (missing dynamic value source)
 		// NOTE: currently only temp_liquid is implemented as a source
-		dev_err(parser->dev, "%s: missing \"temp_liquid\"\n",
-		        parser->attr);
+		dev_warn(parser->dev, "%s: missing dynamic value source\n",
+		         parser->attr);
 		if (!ret)
 			ret = 1;
 		goto error;
@@ -277,8 +276,8 @@ int percent_parser_parse(struct percent_parser *parser)
 
 	ret = str_scan_word(&parser->buf, type);
 	if (ret) {
-		dev_err(parser->dev, "%s: missing percent type\n",
-		        parser->attr);
+		dev_warn(parser->dev, "%s: missing percent type\n",
+		         parser->attr);
 		goto error;
 	}
 	if (strcasecmp(type, "silent") == 0) {
@@ -290,8 +289,8 @@ int percent_parser_parse(struct percent_parser *parser)
 	} else if (strcasecmp(type, "custom") == 0) {
 		ret = percent_parser_custom(parser);
 	} else {
-		dev_err(parser->dev, "%s: invalid percent type %s\n",
-		        parser->attr, type);
+		dev_warn(parser->dev, "%s: invalid percent type %s\n",
+		         parser->attr, type);
 		ret = 1;
 		goto error;
 	}
@@ -299,9 +298,9 @@ int percent_parser_parse(struct percent_parser *parser)
 		goto error;
 	ret = str_scan_word(&parser->buf, type);
 	if (!ret) {
-		dev_err(parser->dev,
-		        "%s: unrecognized data left in buffer: %s...\n",
-		        parser->attr, type);
+		dev_warn(parser->dev,
+		         "%s: unrecognized data left in buffer: %s...\n",
+		         parser->attr, type);
 		ret = 1;
 		goto error;
 	}

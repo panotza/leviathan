@@ -44,6 +44,7 @@ update_interval_store(struct device *dev, struct device_attribute *attr,
 		kraken->update_interval = ms_to_ktime(interval_ms);
 	// and restart updates if they'd been halted
 	if (ktime_compare(interval_old, ktime_set(0, 0)) == 0)
+		dev_info(dev, "restarting updates: interval set to non-0\n");
 		hrtimer_start(&kraken->update_timer, kraken->update_interval,
 		              HRTIMER_MODE_REL);
 	return count;

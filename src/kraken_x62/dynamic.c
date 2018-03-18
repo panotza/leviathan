@@ -48,13 +48,13 @@ static int dynamic_val_parse_normalized(struct dynamic_val *value,
 	char max_str[WORD_LEN_MAX + 1];
 	int ret = str_scan_word(buf, max_str);
 	if (ret) {
-		dev_err(dev, "%s: missing dynamic value max\n", attr);
+		dev_warn(dev, "%s: missing dynamic value max\n", attr);
 		return ret;
 	}
 	ret = kstrtoull(max_str, 0, &max_ull);
 	if (ret) {
-		dev_err(dev, "%s: invalid dynamic value max %s\n", attr,
-		        max_str);
+		dev_warn(dev, "%s: invalid dynamic value max %s\n", attr,
+		         max_str);
 		return ret;
 	}
 	*max = max_ull;
@@ -67,7 +67,7 @@ int dynamic_val_parse(struct dynamic_val *value, const char **buf,
 	char source[WORD_LEN_MAX + 1];
 	int ret = str_scan_word(buf, source);
 	if (ret) {
-		dev_err(dev, "%s: missing dynamic value source\n", attr);
+		dev_warn(dev, "%s: missing dynamic value source\n", attr);
 		return ret;
 	}
 	ret = 0;
@@ -80,8 +80,8 @@ int dynamic_val_parse(struct dynamic_val *value, const char **buf,
 		value->get = dynamic_val_pump_rpm;
 		ret = dynamic_val_parse_normalized(value, buf, dev, attr);
 	} else {
-		dev_err(dev, "%s: illegal dynamic value source %s\n", attr,
-		        source);
+		dev_warn(dev, "%s: illegal dynamic value source %s\n", attr,
+		         source);
 		return 1;
 	}
 	return ret;

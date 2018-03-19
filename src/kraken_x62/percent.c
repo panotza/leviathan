@@ -105,12 +105,19 @@ static void percent_data_set(struct percent_data *data, const u8 *percents)
 		percent_msg_set(&data->msgs[i], percents[i]);
 }
 
-void percent_data_init(struct percent_data *data, enum percent_msg_which which,
-                       u8 percent_min, u8 percent_max)
+void percent_data_init(struct percent_data *data, enum percent_msg_which which)
 {
 	size_t i;
-	data->percent_min = percent_min;
-	data->percent_max = percent_max;
+	switch (which) {
+	case PERCENT_MSG_WHICH_FAN:
+		data->percent_min = 35;
+		data->percent_max = 100;
+		break;
+	case PERCENT_MSG_WHICH_PUMP:
+		data->percent_min = 50;
+		data->percent_max = 100;
+		break;
+	}
 
 	data->update = true;
 	data->value.get = dynamic_val_temp_liquid;

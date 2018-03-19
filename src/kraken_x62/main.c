@@ -20,8 +20,8 @@
 static void kraken_driver_data_init(struct kraken_driver_data *data)
 {
 	status_data_init(&data->status);
-	percent_data_init(&data->percent_fan, PERCENT_MSG_WHICH_FAN, 35, 100);
-	percent_data_init(&data->percent_pump, PERCENT_MSG_WHICH_PUMP, 50, 100);
+	percent_data_init(&data->percent_fan, PERCENT_MSG_WHICH_FAN);
+	percent_data_init(&data->percent_pump, PERCENT_MSG_WHICH_PUMP);
 	led_data_init(&data->led_logo, LED_WHICH_LOGO);
 	led_data_init(&data->leds_ring, LED_WHICH_RING);
 	led_data_init(&data->leds_sync, LED_WHICH_SYNC);

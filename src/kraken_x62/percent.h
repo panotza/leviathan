@@ -32,8 +32,7 @@ struct percent_data {
 	struct mutex mutex;
 };
 
-void percent_data_init(struct percent_data *data, enum percent_msg_which which,
-                       u8 percent_min, u8 percent_max);
+void percent_data_init(struct percent_data *data, enum percent_msg_which which);
 
 int kraken_x62_update_percent(struct usb_kraken *kraken,
                               struct percent_data *data);

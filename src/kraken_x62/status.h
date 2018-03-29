@@ -18,6 +18,7 @@ u8 status_data_temp_liquid(struct status_data *data);
 u16 status_data_fan_rpm(struct status_data *data);
 u16 status_data_pump_rpm(struct status_data *data);
 u8 status_data_unknown_1(struct status_data *data);
+u16 status_data_footer_2(struct status_data *data);
 
 int kraken_x62_update_status(struct usb_kraken *kraken,
                              struct status_data *data);

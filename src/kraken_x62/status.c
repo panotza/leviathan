@@ -11,8 +11,11 @@
 static const u8 MSG_HEADER[] = {
 	0x04,
 };
-static const u8 MSG_FOOTER_1[] = {
-	0x00, 0x00, 0x00, 0x78, 0x02, 0x00, 0x01, 0x08,
+static const u8 MSG_FOOTER_1S[][8] = {
+	// X42
+	{ 0x00, 0x00, 0x00, 0xff, 0x02, 0x00, 0x01, 0x08, },
+	// X62
+	{ 0x00, 0x00, 0x00, 0x78, 0x02, 0x00, 0x01, 0x08, },
 };
 static const u8 MSG_FOOTER_2S[][2] = {
 	{ 0x00, 0x00, },
@@ -92,23 +95,31 @@ int kraken_x62_update_status(struct usb_kraken *kraken,
 		        "failed status update: I/O error\n");
 		return ret ? ret : 1;
 	}
-	// check header and footer 1
+	// check header
 	invalid = false;
-	if (memcmp(data->msg + 0, MSG_HEADER, sizeof(MSG_HEADER)) != 0 ||
-	    memcmp(data->msg + 7, MSG_FOOTER_1, sizeof(MSG_FOOTER_1)) != 0) {
+	if (memcmp(data->msg + 0, MSG_HEADER, sizeof(MSG_HEADER)) != 0)
 		invalid = true;
+	if (!invalid) {
+		// check all footer 1s
+		size_t i;
+		invalid = true;
+		for (i = 0; i < ARRAY_SIZE(MSG_FOOTER_1S); i++)
+			if (memcmp(data->msg + 7, MSG_FOOTER_1S[i],
+			           sizeof(MSG_FOOTER_1S[i])) == 0) {
+				invalid = false;
+				break;
+			}
 	}
 	if (!invalid) {
 		// check all footer 2s
 		size_t i;
 		invalid = true;
-		for (i = 0; i < ARRAY_SIZE(MSG_FOOTER_2S); i++) {
+		for (i = 0; i < ARRAY_SIZE(MSG_FOOTER_2S); i++)
 			if (memcmp(data->msg + 15, MSG_FOOTER_2S[i],
 			           sizeof(MSG_FOOTER_2S[i])) == 0) {
 				invalid = false;
 				break;
 			}
-		}
 	}
 	if (invalid) {
 		char status_hex[sizeof(data->msg) * 3 + 1];

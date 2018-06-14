@@ -29,6 +29,15 @@ make && sudo insmod $DRIVER.ko
 ```
 where `$DRIVER` is the name of the driver, either `kraken` or `kraken_x62`.
 
+## `kraken_x62`
+A common issue is that the device directory is not present in `/sys/bus/usb/drivers/kraken_x62/` after installation.
+This is usually caused by module `usbhid` being already connected to the cooler.
+To fix it, run
+```Shell
+sudo rmmod kraken_x62 && sudo modprobe -r usbhid && sudo insmod kraken_x62.ko && sudo modprobe usbhid
+```
+If this doesn't work, see the Troubleshooting section below for more detailed troubleshooting advice.
+
 ## Troubleshooting
 To check if the installation was successful, run
 ```Shell

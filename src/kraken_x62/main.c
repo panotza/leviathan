@@ -92,6 +92,16 @@ static ssize_t unknown_1_show(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RO(unknown_1);
 
+static ssize_t unknown_2_show(struct device *dev, struct device_attribute *attr,
+                              char *buf)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
+	struct status_data *status = &kraken->data->status;
+	return scnprintf(buf, PAGE_SIZE, "%u\n", status_data_unknown_2(status));
+}
+
+static DEVICE_ATTR_RO(unknown_2);
+
 static ssize_t footer_2_show(struct device *dev, struct device_attribute *attr,
                              char *buf)
 {
@@ -204,6 +214,8 @@ int kraken_driver_create_device_files(struct usb_interface *interface)
 		goto error_pump_rpm;
 	if ((ret = device_create_file(&interface->dev, &dev_attr_unknown_1)))
 		goto error_unknown_1;
+	if ((ret = device_create_file(&interface->dev, &dev_attr_unknown_2)))
+		goto error_unknown_2;
 	if ((ret = device_create_file(&interface->dev, &dev_attr_footer_2)))
 		goto error_footer_2;
 	if ((ret = device_create_file(&interface->dev, &dev_attr_fan_percent)))
@@ -229,6 +241,8 @@ error_pump_percent:
 error_fan_percent:
 	device_remove_file(&interface->dev, &dev_attr_footer_2);
 error_footer_2:
+	device_remove_file(&interface->dev, &dev_attr_unknown_2);
+error_unknown_2:
 	device_remove_file(&interface->dev, &dev_attr_unknown_1);
 error_unknown_1:
 	device_remove_file(&interface->dev, &dev_attr_pump_rpm);
@@ -250,6 +264,7 @@ void kraken_driver_remove_device_files(struct usb_interface *interface)
 	device_remove_file(&interface->dev, &dev_attr_pump_percent);
 	device_remove_file(&interface->dev, &dev_attr_fan_percent);
 	device_remove_file(&interface->dev, &dev_attr_footer_2);
+	device_remove_file(&interface->dev, &dev_attr_unknown_2);
 	device_remove_file(&interface->dev, &dev_attr_unknown_1);
 	device_remove_file(&interface->dev, &dev_attr_pump_rpm);
 	device_remove_file(&interface->dev, &dev_attr_fan_rpm);

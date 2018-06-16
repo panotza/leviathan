@@ -15,7 +15,7 @@ Also, while it doesn't seem like the hardware could be damaged by silly USB mess
   * NZXT Kraken X72 *[?]*
   * NZXT Kraken X62
   * NZXT Kraken X52 *[?]*
-  * NZXT Kraken X42 *[?]*
+  * NZXT Kraken X42
   * NZXT Kraken M22 *[?]*
 
 A *[?]* indicates that the device should be compatible based on the product specifications, but has not yet been tested with the driver and is therefore currently unsupported.

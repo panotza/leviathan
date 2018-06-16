@@ -71,7 +71,12 @@ Then reload the `usbhid` module
 sudo modprobe -r usbhid && sudo modprobe usbhid
 ```
 (You should be careful unloading USB modules as it may make your USB devices (keyboard etc.) unresponsive; therefore it's best to type all the commands out on a single line before executing them, like above.)
-And finally reload the driver with
+Also update initramfs to keep the configuration across reboots
+```Shell
+sudo update-initramfs -u
+```
+
+Finally reload the driver with
 ```Shell
 sudo rmmod kraken_x62; sudo insmod kraken_x62.ko
 ```

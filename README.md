@@ -24,53 +24,72 @@ If you have an unsupported liquid cooler — whether it is present in the above 
 
 # Installation
 Make sure the headers for the kernel you are running are installed.
-```Shell
-make && sudo insmod $DRIVER.ko
-```
-where `$DRIVER` is the name of the driver, either `kraken` or `kraken_x62`.
 
-## `kraken_x62`
-A common issue is that the device directory is not present in `/sys/bus/usb/drivers/kraken_x62/` after installation.
-This is usually caused by module `usbhid` being already connected to the cooler.
-To fix it, run
+To build the drivers:
 ```Shell
-sudo rmmod kraken_x62 && sudo modprobe -r usbhid && sudo insmod kraken_x62.ko && sudo modprobe usbhid
+make
 ```
-If this doesn't work, see the Troubleshooting section below for more detailed troubleshooting advice.
 
-## Troubleshooting
-To check if the installation was successful, run
+To install the driver temporarily (until the next reboot):
+```Shell
+sudo insmod $DRIVER.ko
+```
+where `$DRIVER` is the name of the driver, i.e. either `kraken` or `kraken_x62`.
+
+To install the driver permanently across reboots:
+```Shell
+sudo cp $DRIVER.ko /lib/modules/$VERSION/kernel/drivers/usb && sudo depmod && sudo modprobe $DRIVER
+```
+where `$VERSION` is the kernel version you're using, e.g. `4.16.0-2-amd64`.
+After this, the driver should automatically load on boot.
+
+**Note**: This is not permanent across kernel versions.
+The process needs to be repeated whenever you upgrade your kernel — just move the `$DRIVER.ko` file into the new kernel version's `kernel/drivers/usb` directory and load with `modprobe`.
+
+## Checking the installation
+
+Run
 ```Shell
 sudo dmesg
 ```
 Near the bottom you should see `usbcore: registered new interface driver $DRIVER` or a similar message.
 If your cooler is connected, then directly above this line you should see `$DRIVER 1-7:1.0: Kraken connected` or similar.
-If you don't see either message then something went wrong and you should consider reporting it as a bug.
-If you see a long, scary error message from the kernel (stacktrace, registry dump, etc.), your kernel is in an invalid state and you should also restart your computer before doing anything else (also consider doing any further testing of the driver in a virtual machine so you won't have to restart after each crash).
+If you see both messages, the installation was successful, and there should be a directory for your cooler device's attributes in `/sys/bus/usb/drivers/$DRIVER`, e.g. `/sys/bus/usb/drivers/$DRIVER/1-7:1.0`.
 
-If you see the `usbcore` message but not the driver message, it is probably one of three possibilities:
-* The cooler is not connected or not connected properly to the motherboard: check if it's connected properly / try reconnecting it.
-* The cooler is not supported by the driver: see [CONTRIBUTING.md](CONTRIBUTING.md).
-* Another kernel USB module is already connected to the cooler, so the driver cannot connect to it.
+## Troubleshooting `kraken_x62`
 
-In the last case, search the kernel logs for any mention of `NZXT`
+The most common issue with `kraken_x62` is the device not connecting after installation.
+This is usually caused by module `usbhid` being already connected to the cooler.
+To fix it, create a file `/etc/modprobe.d/usbhid-kraken-ignore.conf` with the contents
+```
+# 1e71:170e is the NZXT Kraken X*2 coolers
+# 0x4 is HID_QUIRK_IGNORE
+options usbhid quirks=0x1e71:0x170e:0x4
+```
+Then reload the `usbhid` module
 ```Shell
-sudo dmesg | grep -F 'NZXT'
-```
-For example, if you see a line like the following
-```
-hid-generic 0003:1E71:170E.0002: hiddev0,hidraw0: USB HID v1.10 Device [NZXT.-Inc. NZXT USB Device] on usb-0000:00:1d.0-1/input0
-```
-you'll know that the module in question is `hid_generic` or related to `hid_generic`.
-You can then unload the kraken driver, temporarily unload the suspected module, load the driver, and load the module again.
-Check the kernel logs again; you should now hopefully see a message like `$DRIVER 1-7:1.0: Kraken connected` near the bottom.
-If that does not work, try related modules you think might be the cause in turn.
-
-I've already troubleshooted this particular case, so I know that the cause of the issue is module `usbhid`, and the solution is:
-```Shell
-sudo rmmod $DRIVER && sudo modprobe -r usbhid && sudo insmod $DRIVER.ko && sudo modprobe usbhid
+sudo modprobe -r usbhid && sudo modprobe usbhid
 ```
 (You should be careful unloading USB modules as it may make your USB devices (keyboard etc.) unresponsive; therefore it's best to type all the commands out on a single line before executing them, like above.)
+And finally reload the driver with
+```Shell
+sudo rmmod kraken_x62; sudo insmod kraken_x62.ko
+```
+or
+```Shell
+sudo modprobe -r kraken_x62; sudo modprobe kraken_x62
+```
+depending on how it was installed.
+
+## Troubleshooting the general case
+
+If you don't see any messages about the `$DRIVER` in `dmesg` then something went wrong and you should consider reporting it as a bug.
+If you see a long, scary error message from the kernel (stacktrace, registry dump, etc.), the driver crashed and your kernel is in an invalid state; you should restart your computer before doing anything else (also consider doing any further testing of the driver in a virtual machine so you won't have to restart after each crash).
+
+If you see the `registered new interface driver` message but not the `Kraken connected` or similar message, it is probably one of three possibilities:
+* The cooler is not connected or not connected properly to the motherboard: check if it's connected properly / try reconnecting it.
+* The cooler is not supported by the driver: see [CONTRIBUTING.md](CONTRIBUTING.md).
+* Another kernel USB module is already connected to the cooler, so the driver cannot connect to it: see [section Troubleshooting `kraken_x62`](#troubleshooting-kraken_x62).
 
 # Usage
 Each driver can be controlled with device files under `/sys/bus/usb/drivers/$DRIVER`, where `$DRIVER` is the driver name.

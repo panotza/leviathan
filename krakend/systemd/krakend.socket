@@ -1,0 +1,11 @@
+[Unit]
+Description=nzxt kraken driver daemon socket
+
+[Install]
+WantedBy=sockets.target
+
+[Socket]
+ListenStream=%t/krakend/socket
+SocketUser=root
+SocketGroup=krakend
+SocketMode=0660

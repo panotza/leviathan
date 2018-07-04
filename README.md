@@ -24,5 +24,9 @@ If you have an unsupported liquid cooler — whether it is present in the above 
 # Installation
 The drivers to provide the basic interface to the hardware: see [`drivers/README.md`](drivers/README.md).
 
+The daemon to provide dynamic updates on top of the drivers: see [`krakend/README.md`](krakend/README.md).
+
 # Usage
 The drivers can used to control the devices manually: see [`drivers/README.md`](drivers/README.md).
+
+The daemon can be controlled through its socket file once it's running: see [`krakend/README.md`](krakend/README.md).

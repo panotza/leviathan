@@ -1,24 +1,14 @@
-- [x] --daemonize={Yes,no}
-
-- [x] --socket-file={Create-file,systemd}
-
-  - [x] --socket-file-group=GROUP
-
 - [ ] crate feature for systemd
 
 - [ ] If SIGTERM is received, shut down the daemon and exit cleanly.
 
 - [ ] If SIGHUP is received, reload the configuration files, if this applies.
 
-- [x] Provide a correct exit code from the main daemon process, as this is used by the init system to detect service errors and problems.
-
-- [x] For integration in systemd, provide a .service unit file that carries information about starting, stopping and otherwise maintaining the daemon.
-
 - [ ] As much as possible, rely on the init system's functionality to limit the access of the daemon to files, services and other resources, i.e. in the case of systemd, rely on systemd's resource limit control instead of implementing your own, rely on systemd's privilege dropping code instead of implementing it in the daemon, and similar.
 
-- [x] If your daemon provides services to other local processes or remote clients via a socket, it should be made socket-activatable following the scheme pointed out below.  Like D-Bus activation, this enables on-demand starting of services as well as it allows improved parallelization of service start-up.
+- [ ] crate feature for systemd
 
-- [ ] If applicable, a daemon should notify the init system about startup completion or status updates via the sd_notify(3) interface.  (--notify={None,systemd})
+  - [ ] document in README + the requirement of libsystemd
 
 - [ ] logging
 

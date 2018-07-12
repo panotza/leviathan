@@ -30,4 +30,4 @@ For `systemd`, simply run
 ```Shell
 sudo make install-systemd
 ```
-and add any users that need to have access to the daemon's socket to the newly created `krakend` group.
+and add any users that need to have access to the daemon's socket to the newly created group for this (`krakend` by default).

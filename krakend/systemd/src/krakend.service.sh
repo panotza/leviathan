@@ -1,3 +1,7 @@
+#!/bin/sh
+set -eu
+
+cat <<EOF
 [Unit]
 Description=nzxt kraken driver daemon
 ConditionUser=root
@@ -8,7 +12,8 @@ Also=krakend.socket
 
 [Service]
 Type=notify
-ExecStart=/usr/local/bin/krakend --daemonize=false --notify=systemd --socket-file=systemd
+ExecStart=${prefix}/bin/krakend --init-system=systemd
 Restart=on-failure
 User=root
 NotifyAccess=main
+EOF

@@ -1,3 +1,7 @@
+#!/bin/sh
+set -eu
+
+cat <<EOF
 [Unit]
 Description=nzxt kraken driver daemon socket
 
@@ -7,5 +11,6 @@ WantedBy=sockets.target
 [Socket]
 ListenStream=%t/krakend/socket
 SocketUser=root
-SocketGroup=krakend
+SocketGroup=${socket_group}
 SocketMode=0660
+EOF

@@ -5,14 +5,19 @@ build :
 .PHONY : clean
 clean :
 	cargo clean
+	$(RM) -r systemd/target/
 
-prefix := /usr/local
+export prefix := /usr/local
 
 .PHONY : install
 install :
-	install -Cs target/release/krakend $(prefix)/bin/
+	install -s target/release/krakend $(prefix)/bin/
 
+export socket_group := krakend
+
+.PHONY : install-systemd
 install-systemd : install
-	groupadd -fr krakend
-	install -C systemd/* /etc/systemd/system/
+	./systemd/build.sh
+	install -C systemd/target/* /etc/systemd/system/
+	groupadd -fr $(socket_group)
 	systemctl enable krakend

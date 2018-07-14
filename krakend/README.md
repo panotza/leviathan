@@ -36,11 +36,13 @@ and add any users that need to have access to the daemon's socket to the newly c
 
 Once `krakend` is running, it can be controlled through its socket file by users in the file's owner group.
 The default location of this file is `/run/krakend/socket`.
-All communication between client and daemon is done in [YAML 1.2](http://yaml.org), encoded UTF-8.
+All communication between clients and daemon is done in [YAML 1.2](http://yaml.org), encoded UTF-8.
 
-A client, while connected to the socket, may send 0 or more requests; the daemon sends a response to each one, in the order they arrive.
-Each request or response is a separate [YAML document](http://yaml.org/spec/1.2/spec.html#id2800132).
-Each request *should* have an explicit document end marker `...`; each response *always* has an explicit document end marker `...`.
+A client may connect to the socket and send exactly one request, to which the daemon sends one response on the connection.
+Each request and response consists of one [YAML document](http://yaml.org/spec/1.2/spec.html#id2800132).
+A request's YAML document *must* be explicitly terminated, i.e. end with a document end marker `...`.
+
+Each following example consists of a request and the resulting response.
 
 ## Responses
 
@@ -170,7 +172,7 @@ value: 2000
 ...
 ```
 
-Example:
+Example — getting the fan speed:
 ```YAML
 request: get
 driver: kraken_x62

@@ -9,6 +9,7 @@ pub type Res<T> = Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
+    Chmod(Errno, path::PathBuf),
     Chown(Errno, path::PathBuf),
     Clap(clap::Error),
     ClapDisplayed(clap::Error),
@@ -31,6 +32,9 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Error::Chmod(e, path) => {
+                write!(f, "cannot chmod {:?}: {}", path, e)
+            }
             Error::Chown(e, path) => {
                 write!(f, "cannot chown {:?}: {}", path, e)
             },
@@ -78,6 +82,7 @@ impl error::Error for Error {
             Error::Io(e) => Some(e),
             Error::Utf8(e) => Some(e),
             Error::Xdg(e) => Some(e),
+            Error::Chmod(..) |
             Error::Chown(..) |
             Error::Fork(..) |
             Error::Forked(..) |

@@ -1,7 +1,85 @@
 use error::Errno;
 use libc;
-use std::{ffi, mem, path, ptr};
+use std::{ffi, mem, path, ptr, str};
 use std::os::unix::ffi::OsStrExt;
+
+pub fn chmod(path: &path::Path, mode: ChmodMode) -> Result<(), Errno> {
+    let path = path.as_os_str().as_bytes().as_ptr() as *const libc::c_char;
+    // NOTE: unsafe is OK, as all arguments are validated
+    let res = unsafe { libc::chmod(path, mode.into()) };
+    match res {
+        0 => Ok(()),
+        _ => Err(Errno::from_global_errno()),
+    }
+}
+
+pub struct ChmodMode {
+    pub group_execute: bool,
+    pub group_read: bool,
+    pub group_write: bool,
+    pub other_execute: bool,
+    pub other_read: bool,
+    pub other_write: bool,
+    pub owner_execute: bool,
+    pub owner_read: bool,
+    pub owner_write: bool,
+    pub set_gid: bool,
+    pub set_uid: bool,
+    pub sticky: bool,
+}
+
+impl str::FromStr for ChmodMode {
+    type Err = ChmodModeParseError;
+
+    /// Convert a string of 12 characters in the format "ugsrwxrwxrwx" to a
+    /// mode.
+    ///
+    /// The characters represent Set-UID, set-GID, sticky, and read, write,
+    /// execute for user, group and other, in that order.  Each permission is
+    /// considered false if the character is '-', true otherwise.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let chars: Vec<_> = s.chars().collect();
+        const PERMISSIONS: usize = 12;
+        if chars.len() != PERMISSIONS {
+            return Err(ChmodModeParseError { });
+        }
+        const PERMISSION_FALSE: char = '-';
+        Ok(Self {
+            set_uid:       (chars[0]  != PERMISSION_FALSE),
+            set_gid:       (chars[1]  != PERMISSION_FALSE),
+            sticky:        (chars[2]  != PERMISSION_FALSE),
+            owner_read:    (chars[3]  != PERMISSION_FALSE),
+            owner_write:   (chars[4]  != PERMISSION_FALSE),
+            owner_execute: (chars[5]  != PERMISSION_FALSE),
+            group_read:    (chars[6]  != PERMISSION_FALSE),
+            group_write:   (chars[7]  != PERMISSION_FALSE),
+            group_execute: (chars[8]  != PERMISSION_FALSE),
+            other_read:    (chars[9]  != PERMISSION_FALSE),
+            other_write:   (chars[10] != PERMISSION_FALSE),
+            other_execute: (chars[11] != PERMISSION_FALSE),
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct ChmodModeParseError { }
+
+impl From<ChmodMode> for libc::mode_t {
+    fn from(mode: ChmodMode) -> Self {
+        (if mode.other_execute { 0b0000_0000_0001 } else { 0 } |
+         if mode.other_write   { 0b0000_0000_0010 } else { 0 } |
+         if mode.other_read    { 0b0000_0000_0100 } else { 0 } |
+         if mode.group_execute { 0b0000_0000_1000 } else { 0 } |
+         if mode.group_write   { 0b0000_0001_0000 } else { 0 } |
+         if mode.group_read    { 0b0000_0010_0000 } else { 0 } |
+         if mode.owner_execute { 0b0000_0100_0000 } else { 0 } |
+         if mode.owner_write   { 0b0000_1000_0000 } else { 0 } |
+         if mode.owner_read    { 0b0001_0000_0000 } else { 0 } |
+         if mode.sticky        { 0b0010_0000_0000 } else { 0 } |
+         if mode.set_gid       { 0b0100_0000_0000 } else { 0 } |
+         if mode.set_uid       { 0b1000_0000_0000 } else { 0 })
+    }
+}
 
 pub fn chown(path: &path::Path, owner: ChownUid, group: ChownGid) ->
     Result<(), Errno>

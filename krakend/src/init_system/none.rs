@@ -1,6 +1,7 @@
 use c;
 use error::{Error, Res};
 use std::{fs, io, path};
+use std::str::FromStr;
 use std::os::unix::net as unet;
 
 pub struct InitSystem {
@@ -56,7 +57,12 @@ impl super::InitSystem for InitSystem {
         let gid = self.socket_file_group.getgr()?.gid();
         c::linux::chown(&path, c::linux::ChownUid::Unspecified,
                         c::linux::ChownGid::Gid(gid))
-            .map_err(|e| Error::Chown(e, path.into()))?;
+            .map_err(|e| Error::Chown(e, path.clone()))?;
+        const MODE: &'static str = "---rw-rw----";
+        let mode = c::linux::ChmodMode::from_str(MODE)
+            .expect("invalid chmod mode");
+        c::linux::chmod(&path, mode)
+            .map_err(|e| Error::Chmod(e, path.clone()))?;
         Ok(socket_file)
     }
 }

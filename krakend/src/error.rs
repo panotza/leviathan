@@ -2,6 +2,7 @@
 
 use clap;
 use libc;
+use yaml;
 use std::{error, ffi, fmt, io, path, string};
 use xdg;
 
@@ -25,6 +26,7 @@ pub enum Error {
     NotifyNoSocket,
     PidFileSize(path::PathBuf, usize),
     ProgramDirAcquire(path::PathBuf),
+    ResponseEmit(yaml::EmitError),
     Utf8(string::FromUtf8Error),
     Xdg(xdg::BaseDirectoriesError),
 }
@@ -68,6 +70,9 @@ impl fmt::Display for Error {
             Error::ProgramDirAcquire(path) => {
                 write!(f, "cannot acquire program dir {:?}", path)
             },
+            Error::ResponseEmit(e) => {
+                write!(f, "cannot emit yaml response: {}", e)
+            },
             Error::Utf8(e) => e.fmt(f),
             Error::Xdg(e) => e.fmt(f),
         }
@@ -80,6 +85,7 @@ impl error::Error for Error {
             Error::Clap(e) |
             Error::ClapDisplayed(e) => Some(e),
             Error::Io(e) => Some(e),
+            Error::ResponseEmit(e) => Some(e),
             Error::Utf8(e) => Some(e),
             Error::Xdg(e) => Some(e),
             Error::Chmod(..) |
@@ -124,6 +130,12 @@ impl From<string::FromUtf8Error> for Error {
 impl From<xdg::BaseDirectoriesError> for Error {
     fn from(e: xdg::BaseDirectoriesError) -> Self {
         Error::Xdg(e)
+    }
+}
+
+impl From<yaml::EmitError> for Error {
+    fn from(e: yaml::EmitError) -> Self {
+        Error::ResponseEmit(e)
     }
 }
 

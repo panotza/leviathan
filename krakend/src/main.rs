@@ -1,11 +1,13 @@
 #[macro_use]
 extern crate clap;
 extern crate libc;
+extern crate yaml_rust as yaml;
 extern crate xdg;
 
 mod c;
 mod error;
 mod init_system;
+mod request;
 
 use error::{Error, Res};
 use init_system as is;
@@ -97,12 +99,14 @@ fn run() -> Res<()> {
     let socket_file = init_system.socket_file(&program_dir)?;
     println!("socket_file: {:?}", socket_file);
 
+    let requests = request::Requests::new(&socket_file.listener);
+
     println!("startup complete");
     init_system.notify().startup_end()?;
 
-    println!("# TODO: == main loop start ==");
-    std::thread::sleep(std::time::Duration::from_secs(20));
-    println!("# TODO: == main loop end ==");
+    for request in requests {
+        request?.execute()?;
+    }
 
     println!("shutdown starting");
     init_system.notify().shutdown_start()?;

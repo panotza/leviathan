@@ -6,4 +6,5 @@ version = "0.1.0"
 [dependencies]
 clap = "2.32.0"
 libc = "0.2.42"
+yaml-rust = "0.4.0"
 xdg = "2.1.0"

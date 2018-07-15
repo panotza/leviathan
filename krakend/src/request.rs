@@ -1,5 +1,5 @@
 use error::{Res};
-use std::{fs, io, path};
+use std::{ffi, fs, io, path};
 use std::io::prelude::*;
 use std::os::unix::net as unet;
 use yaml;
@@ -54,6 +54,8 @@ trait RequestInner {
 }
 
 impl RequestInner {
+    const DRIVERS_DIR: &'static str = "/sys/bus/usb/drivers";
+
     const YAML_DOCUMENT_END_MARKER: &'static str = "...";
 
     fn receive(connection: unet::UnixStream) -> Res<Box<Self>> {
@@ -123,6 +125,40 @@ impl RequestInner {
             response: Response::Error(error_msg),
         })
     }
+
+    fn device_dir(map: &yaml::yaml::Hash) -> Result<path::PathBuf, Response> {
+        let driver_name = Self::key_file_name(map, "driver")?;
+        let device_name = Self::key_file_name(map, "device")?;
+
+        let drivers_dir = path::Path::new(Self::DRIVERS_DIR);
+        let device_dir = drivers_dir.join(driver_name).join(device_name);
+
+        if device_dir.exists() {
+            Ok(device_dir)
+        } else {
+            Err(Response::Error(format!("device and/or driver does not exist: \
+                                         {:?}", device_dir)))
+        }
+    }
+
+    fn key_file_name(map: &yaml::yaml::Hash, key: &str) ->
+        Result<ffi::OsString, Response>
+    {
+        let value = match map.get(&yaml::Yaml::String(key.into())) {
+            Some(yaml::Yaml::String(s)) => s,
+            Some(value) => {
+                return Err(Response::Error(
+                    format!("illegal '{}' type: {:?}", key, value)));
+            },
+            None => return Err(Response::Error(format!("no '{}'", key))),
+        };
+        match path::Path::new(value).file_name() {
+            Some(file_name) => Ok(file_name.into()),
+            None => {
+                Err(Response::Error(format!("invalid '{}': {:?}", key, value)))
+            },
+        }
+    }
 }
 
 struct Invalid {
@@ -142,8 +178,11 @@ impl RequestInner for Invalid {
 
 struct Get {
     connection: unet::UnixStream,
-    #[allow(dead_code)]
     map: yaml::yaml::Hash,
+}
+
+impl Get {
+    const ATTRIBUTES_FORBIDDEN: &'static [&'static str] = &["update_indicator"];
 }
 
 impl RequestInner for Get {
@@ -152,7 +191,55 @@ impl RequestInner for Get {
     }
 
     fn execute(&self) -> Res<Response> {
-        Ok(Response::Error("TODO".into()))
+        let device_dir = match RequestInner::device_dir(&self.map) {
+            Ok(dir) => dir,
+            Err(response) => return Ok(response),
+        };
+
+        let attribute_name = match RequestInner::key_file_name(&self.map,
+                                                               "attribute") {
+            Ok(file_name) => file_name,
+            Err(response) => return Ok(response),
+        };
+        if Self::ATTRIBUTES_FORBIDDEN.iter()
+            .find(|&&s| ffi::OsStr::new(s) == attribute_name)
+            .is_some()
+        {
+            return Ok(Response::Error(
+                format!("forbidden attribute: {:?}", attribute_name)));
+        }
+
+        let path = device_dir.join(attribute_name);
+        let mut file = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(e) => return Ok(Response::Error(
+                match e.kind() {
+                    io::ErrorKind::NotFound => {
+                        format!("attribute not found: {} ({:?})", e, path)
+                    },
+                    io::ErrorKind::PermissionDenied => {
+                        format!("insufficient permissions to access attribute: \
+                                 {} ({:?})", e, path)
+                    },
+                    _ => format!("cannot access attribute: {} ({:?})", e, path),
+            })),
+        };
+        let value = {
+            let mut buf = String::new();
+            if let Err(e) = file.read_to_string(&mut buf) {
+                return Ok(Response::Error(
+                    format!("cannot read attribute: {} ({:?})", e, path)));
+            }
+            buf.trim_right().to_owned()
+        };
+
+        let response = {
+            let mut response = yaml::yaml::Hash::new();
+            response.insert(yaml::Yaml::String("value".into()),
+                            yaml::Yaml::String(value));
+            response
+        };
+        Ok(Response::Success(response))
     }
 }
 
@@ -166,8 +253,7 @@ impl RequestInner for ListDrivers {
     }
 
     fn execute(&self) -> Res<Response> {
-        const DRIVERS_DIR: &'static str = "/sys/bus/usb/drivers";
-        let drivers_dir = path::Path::new(DRIVERS_DIR);
+        let drivers_dir = path::Path::new(RequestInner::DRIVERS_DIR);
         const DRIVER_NAMES: &[&'static str] = &["kraken", "kraken_x62"];
 
         let mut drivers = yaml::yaml::Hash::new();

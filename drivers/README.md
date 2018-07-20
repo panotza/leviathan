@@ -105,12 +105,12 @@ $ sudo insmod $DRIVER update_interval=$INTERVAL
 ```
 
 ## Syncing to the updates
-Attribute `update_indicator` is a special read-only attribute.
+Attribute `update_sync` is a special read-only attribute.
 Its purpose is to allow userspace programs to sync their actions to directly after the driver updates; it's not very useful for users handling the driver attributes manually.
 When read, it blocks the read until the next update is finished (or the waiting task has been interrupted).
 It's value is `1` if the next update has finished, `0` if the waiting task has been interrupted.
 ```Shell
-$ time -p cat /sys/bus/usb/drivers/$DRIVER/$DEVICE/kraken/update_indicator
+$ time -p cat /sys/bus/usb/drivers/$DRIVER/$DEVICE/kraken/update_sync
 1
 real 0.77
 user 0.00

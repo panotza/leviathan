@@ -101,15 +101,15 @@ static ssize_t unknown_2_show(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RO(unknown_2);
 
-static ssize_t footer_2_show(struct device *dev, struct device_attribute *attr,
-                             char *buf)
+static ssize_t unknown_3_show(struct device *dev, struct device_attribute *attr,
+                              char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 	struct status_data *status = &kraken->data->status;
-	return scnprintf(buf, PAGE_SIZE, "%u\n", status_data_footer_2(status));
+	return scnprintf(buf, PAGE_SIZE, "%u\n", status_data_unknown_3(status));
 }
 
-static DEVICE_ATTR_RO(footer_2);
+static DEVICE_ATTR_RO(unknown_3);
 
 static ssize_t attr_percent_store(struct percent_data *data, struct device *dev,
                                   struct device_attribute *attr,
@@ -189,7 +189,7 @@ const struct attribute *KRAKEN_DRIVER_ATTRS[] = {
 	&dev_attr_pump_rpm.attr,
 	&dev_attr_unknown_1.attr,
 	&dev_attr_unknown_2.attr,
-	&dev_attr_footer_2.attr,
+	&dev_attr_unknown_3.attr,
 	&dev_attr_fan_percent.attr,
 	&dev_attr_pump_percent.attr,
 	&dev_attr_led_logo.attr,

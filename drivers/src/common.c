@@ -59,23 +59,23 @@ static DEVICE_ATTR_RW(update_interval);
 static ulong update_interval_initial = UPDATE_INTERVAL_DEFAULT_MS;
 module_param_named(update_interval, update_interval_initial, ulong, 0);
 
-static ssize_t update_indicator_show(struct device *dev,
-                                     struct device_attribute *attr, char *buf)
+static ssize_t update_sync_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
 {
 	struct usb_kraken *kraken = usb_get_intfdata(to_usb_interface(dev));
 	int ret;
-	kraken->update_indicator_condition = false;
-	ret = !wait_event_interruptible(kraken->update_indicator_waitqueue,
-	                                kraken->update_indicator_condition);
+	kraken->update_sync_condition = false;
+	ret = !wait_event_interruptible(kraken->update_sync_waitqueue,
+	                                kraken->update_sync_condition);
 	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
 }
 
-static DEVICE_ATTR_RO(update_indicator);
+static DEVICE_ATTR_RO(update_sync);
 
 // NOTE: not NULL-terminated
 static const struct attribute *KRAKEN_COMMON_ATTRS[] = {
 	&dev_attr_update_interval.attr,
-	&dev_attr_update_indicator.attr,
+	&dev_attr_update_sync.attr,
 };
 
 static enum hrtimer_restart kraken_update_timer(struct hrtimer *update_timer)
@@ -107,9 +107,9 @@ static void kraken_update_work(struct work_struct *update_work)
 	struct usb_kraken *kraken
 		= container_of(update_work, struct usb_kraken, update_work);
 	kraken->update_retval = kraken_driver_update(kraken);
-	// tell any waiting indicators that the update has finished
-	kraken->update_indicator_condition = true;
-	wake_up_interruptible_all(&kraken->update_indicator_waitqueue);
+	// tell any waiting update syncs that the update has finished
+	kraken->update_sync_condition = true;
+	wake_up_interruptible_all(&kraken->update_sync_waitqueue);
 }
 
 #define ATTR_GROUP_NAME "kraken"
@@ -196,10 +196,8 @@ int kraken_probe(struct usb_interface *interface,
 		goto error_create_files;
 	}
 
-	kraken->update_retval = 0;
-
-	init_waitqueue_head(&kraken->update_indicator_waitqueue);
-	kraken->update_indicator_condition = false;
+	init_waitqueue_head(&kraken->update_sync_waitqueue);
+	kraken->update_sync_condition = false;
 
 	snprintf(workqueue_name, sizeof(workqueue_name),
 	         "%s_up", interface->dev.driver->name);
@@ -221,6 +219,8 @@ int kraken_probe(struct usb_interface *interface,
 		              HRTIMER_MODE_REL);
 	}
 
+	kraken->update_retval = 0;
+
 	return 0;
 error_create_files:
 	kraken_driver_disconnect(interface);
@@ -239,8 +239,8 @@ void kraken_disconnect(struct usb_interface *interface)
 	hrtimer_cancel(&kraken->update_timer);
 	flush_workqueue(kraken->update_workqueue);
 	destroy_workqueue(kraken->update_workqueue);
-	kraken->update_indicator_condition = true;
-	wake_up_all(&kraken->update_indicator_waitqueue);
+	kraken->update_sync_condition = true;
+	wake_up_all(&kraken->update_sync_waitqueue);
 
 	kraken_remove_device_files(interface);
 	kraken_driver_disconnect(interface);

@@ -3,6 +3,7 @@
 
 #include "common.h"
 
+#include <linux/device.h>
 #include <linux/freezer.h>
 #include <linux/hrtimer.h>
 #include <linux/moduleparam.h>
@@ -71,34 +72,11 @@ static ssize_t update_indicator_show(struct device *dev,
 
 static DEVICE_ATTR_RO(update_indicator);
 
-static int kraken_create_device_files(struct usb_interface *interface)
-{
-	int retval;
-	if ((retval = device_create_file(&interface->dev,
-	                                 &dev_attr_update_interval)))
-		goto error_update_interval;
-	if ((retval = device_create_file(&interface->dev,
-	                                 &dev_attr_update_indicator)))
-		goto error_update_indicator;
-	if ((retval = kraken_driver_create_device_files(interface)))
-		goto error_driver_files;
-
-	return 0;
-error_driver_files:
-	device_remove_file(&interface->dev, &dev_attr_update_indicator);
-error_update_indicator:
-	device_remove_file(&interface->dev, &dev_attr_update_interval);
-error_update_interval:
-	return retval;
-}
-
-static void kraken_remove_device_files(struct usb_interface *interface)
-{
-	kraken_driver_remove_device_files(interface);
-
-	device_remove_file(&interface->dev, &dev_attr_update_indicator);
-	device_remove_file(&interface->dev, &dev_attr_update_interval);
-}
+// NOTE: not NULL-terminated
+static const struct attribute *KRAKEN_COMMON_ATTRS[] = {
+	&dev_attr_update_interval.attr,
+	&dev_attr_update_indicator.attr,
+};
 
 static enum hrtimer_restart kraken_update_timer(struct hrtimer *update_timer)
 {
@@ -134,6 +112,67 @@ static void kraken_update_work(struct work_struct *update_work)
 	wake_up_interruptible_all(&kraken->update_indicator_waitqueue);
 }
 
+#define ATTR_GROUP_NAME "kraken"
+
+static int kraken_create_device_files(struct usb_interface *interface)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(interface);
+	struct attribute_group *group;
+	const struct attribute **attrs;
+	const struct attribute **attr;
+	size_t attrs_len;
+	size_t i;
+	int retval = -ENOMEM;
+
+	// merge common and driver-specific attributes into `attrs`
+	size_t attrs_size = ARRAY_SIZE(KRAKEN_COMMON_ATTRS) + 1;
+	for (attr = KRAKEN_DRIVER_ATTRS; *attr != NULL; attr++)
+		attrs_size++;
+	attrs = kmalloc(sizeof(attrs[0]) * attrs_size, GFP_KERNEL);
+	if (attrs == NULL)
+		goto error_attrs;
+
+	attrs_len = 0;
+	for (i = 0; i < ARRAY_SIZE(KRAKEN_COMMON_ATTRS); i++)
+		attrs[attrs_len++] = KRAKEN_COMMON_ATTRS[i];
+	for (attr = KRAKEN_DRIVER_ATTRS; *attr != NULL; attr++)
+		attrs[attrs_len++] = *attr;
+	attrs[attrs_len] = NULL;
+	dev_info(&interface->dev, "%zu attributes in the attribute group",
+	         attrs_len);
+
+	// place `attrs` into `group` and store the group
+	group = kzalloc(sizeof(*group), GFP_KERNEL);
+	if (group == NULL) {
+		retval = -ENOMEM;
+		goto error_group;
+	}
+	group->name = ATTR_GROUP_NAME;
+	group->attrs = (struct attribute **) attrs;
+	kraken->attr_group = group;
+
+	// add the group, creating the device files
+	retval = device_add_group(&interface->dev, kraken->attr_group);
+	if (retval)
+		goto error_add_group;
+
+	return 0;
+error_add_group:
+	kfree(group);
+error_group:
+	kfree(attrs);
+error_attrs:
+	return retval;
+}
+
+static void kraken_remove_device_files(struct usb_interface *interface)
+{
+	struct usb_kraken *kraken = usb_get_intfdata(interface);
+	device_remove_group(&interface->dev, kraken->attr_group);
+	kfree(kraken->attr_group->attrs);
+	kfree(kraken->attr_group);
+}
+
 int kraken_probe(struct usb_interface *interface,
                  const struct usb_device_id *id)
 {
@@ -163,7 +202,7 @@ int kraken_probe(struct usb_interface *interface,
 	kraken->update_indicator_condition = false;
 
 	snprintf(workqueue_name, sizeof(workqueue_name),
-	         "%s_up", kraken_driver_name);
+	         "%s_up", interface->dev.driver->name);
 	kraken->update_workqueue
 		= create_singlethread_workqueue(workqueue_name);
 	INIT_WORK(&kraken->update_work, &kraken_update_work);

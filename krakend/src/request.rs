@@ -55,6 +55,7 @@ trait RequestInner {
 
 impl RequestInner {
     const DRIVERS_DIR: &'static str = "/sys/bus/usb/drivers";
+    const ATTRIBUTES_DIR: &'static str = "kraken";
 
     const YAML_DOCUMENT_END_MARKER: &'static str = "...";
 
@@ -126,18 +127,24 @@ impl RequestInner {
         })
     }
 
-    fn device_dir(map: &yaml::yaml::Hash) -> Result<path::PathBuf, Response> {
+    fn attributes_dir(map: &yaml::yaml::Hash) ->
+        Result<path::PathBuf, Response>
+    {
         let driver_name = Self::key_file_name(map, "driver")?;
         let device_name = Self::key_file_name(map, "device")?;
 
         let drivers_dir = path::Path::new(Self::DRIVERS_DIR);
-        let device_dir = drivers_dir.join(driver_name).join(device_name);
+        let attributes_dir = path::Path::new(Self::ATTRIBUTES_DIR);
+        let attributes_dir: path::PathBuf = [
+            drivers_dir, driver_name.as_ref(), device_name.as_ref(),
+            attributes_dir]
+            .iter().collect();
 
-        if device_dir.exists() {
-            Ok(device_dir)
+        if attributes_dir.exists() {
+            Ok(attributes_dir)
         } else {
             Err(Response::Error(format!("device and/or driver does not exist: \
-                                         {:?}", device_dir)))
+                                         {:?}", attributes_dir)))
         }
     }
 
@@ -191,7 +198,7 @@ impl RequestInner for Get {
     }
 
     fn execute(&self) -> Res<Response> {
-        let device_dir = match RequestInner::device_dir(&self.map) {
+        let attributes_dir = match RequestInner::attributes_dir(&self.map) {
             Ok(dir) => dir,
             Err(response) => return Ok(response),
         };
@@ -209,7 +216,7 @@ impl RequestInner for Get {
                 format!("forbidden attribute: {:?}", attribute_name)));
         }
 
-        let path = device_dir.join(attribute_name);
+        let path = attributes_dir.join(attribute_name);
         let mut file = match fs::File::open(&path) {
             Ok(file) => file,
             Err(e) => return Ok(Response::Error(
@@ -289,7 +296,7 @@ impl RequestInner for ListDrivers {
 
         let response = {
             let mut response = yaml::yaml::Hash::new();
-            response.insert(yaml::Yaml::String("driver".into()),
+            response.insert(yaml::Yaml::String("drivers".into()),
                             yaml::Yaml::Hash(drivers));
             response
         };

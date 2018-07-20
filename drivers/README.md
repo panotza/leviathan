@@ -74,13 +74,17 @@ If you see the `registered new interface driver` message but not the `Kraken con
 
 # Usage
 Each driver can be controlled with device files under `/sys/bus/usb/drivers/$DRIVER`, where `$DRIVER` is the driver name.
-Each attribute `$ATTRIBUTE` for a device `$DEVICE` is exposed to the user through the file `/sys/bus/usb/drivers/$DRIVER/$DEVICE/$ATTRIBUTE`.
-
 Find the symbolic links that point to the connected compatible devices.
 In my case, there's only one Kraken connected.
 ```Shell
 /sys/bus/usb/drivers/$DRIVER/2-1:1.0 -> ../../../../devices/pci0000:00/0000:00:06.0/usb2/2-1/2-1:1.0
 ```
+
+Each attribute `$ATTRIBUTE` for device `$DEVICE` is exposed to the user through the file `/sys/bus/usb/drivers/$DRIVER/$DEVICE/kraken/$ATTRIBUTE`.
+(Note the `kraken` directory before the attribute.)
+This constitutes the driver's userspace interface for the device.
+
+**Note**: Any attributes not documented here or in the driver-specific documentation are *not* part of the stable userspace interface and are subject to change anytime.
 
 ## Changing the update interval
 Attribute `update_interval` is the number of milliseconds elapsed between successive USB update messages.
@@ -88,9 +92,9 @@ This is mainly useful for debugging; you probably don't need to change it from t
 The minimum interval is 500 ms — anything smaller is silently changed to 500.
 A special value of 0 indicates that no USB updates are sent.
 ```Shell
-$ cat /sys/bus/usb/drivers/$DRIVER/$DEVICE/update_interval
+$ cat /sys/bus/usb/drivers/$DRIVER/$DEVICE/kraken/update_interval
 1000
-$ echo $INTERVAL > /sys/bus/usb/drivers/$DRIVER/$DEVICE/update_interval
+$ echo $INTERVAL > /sys/bus/usb/drivers/$DRIVER/$DEVICE/kraken/update_interval
 ```
 
 Module parameter `update_interval` can also be used to set the update interval at module load time.
@@ -106,7 +110,7 @@ Its purpose is to allow userspace programs to sync their actions to directly aft
 When read, it blocks the read until the next update is finished (or the waiting task has been interrupted).
 It's value is `1` if the next update has finished, `0` if the waiting task has been interrupted.
 ```Shell
-$ time -p cat /sys/bus/usb/drivers/$DRIVER/$DEVICE/update_indicator
+$ time -p cat /sys/bus/usb/drivers/$DRIVER/$DEVICE/kraken/update_indicator
 1
 real 0.77
 user 0.00

@@ -182,76 +182,21 @@ static ssize_t leds_sync_store(struct device *dev,
 
 static DEVICE_ATTR_WO(leds_sync);
 
-int kraken_driver_create_device_files(struct usb_interface *interface)
-{
-	int ret;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_serial_no)))
-		goto error_serial_no;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_temp_liquid)))
-		goto error_temp_liquid;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_fan_rpm)))
-		goto error_fan_rpm;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_pump_rpm)))
-		goto error_pump_rpm;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_unknown_1)))
-		goto error_unknown_1;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_unknown_2)))
-		goto error_unknown_2;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_footer_2)))
-		goto error_footer_2;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_fan_percent)))
-		goto error_fan_percent;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_pump_percent)))
-		goto error_pump_percent;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_led_logo)))
-		goto error_led_logo;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_leds_ring)))
-		goto error_leds_ring;
-	if ((ret = device_create_file(&interface->dev, &dev_attr_leds_sync)))
-		goto error_leds_sync;
-
-	return 0;
-error_leds_sync:
-	device_remove_file(&interface->dev, &dev_attr_leds_ring);
-error_leds_ring:
-	device_remove_file(&interface->dev, &dev_attr_led_logo);
-error_led_logo:
-	device_remove_file(&interface->dev, &dev_attr_pump_percent);
-error_pump_percent:
-	device_remove_file(&interface->dev, &dev_attr_fan_percent);
-error_fan_percent:
-	device_remove_file(&interface->dev, &dev_attr_footer_2);
-error_footer_2:
-	device_remove_file(&interface->dev, &dev_attr_unknown_2);
-error_unknown_2:
-	device_remove_file(&interface->dev, &dev_attr_unknown_1);
-error_unknown_1:
-	device_remove_file(&interface->dev, &dev_attr_pump_rpm);
-error_pump_rpm:
-	device_remove_file(&interface->dev, &dev_attr_fan_rpm);
-error_fan_rpm:
-	device_remove_file(&interface->dev, &dev_attr_temp_liquid);
-error_temp_liquid:
-	device_remove_file(&interface->dev, &dev_attr_serial_no);
-error_serial_no:
-	return ret;
-}
-
-void kraken_driver_remove_device_files(struct usb_interface *interface)
-{
-	device_remove_file(&interface->dev, &dev_attr_leds_sync);
-	device_remove_file(&interface->dev, &dev_attr_leds_ring);
-	device_remove_file(&interface->dev, &dev_attr_led_logo);
-	device_remove_file(&interface->dev, &dev_attr_pump_percent);
-	device_remove_file(&interface->dev, &dev_attr_fan_percent);
-	device_remove_file(&interface->dev, &dev_attr_footer_2);
-	device_remove_file(&interface->dev, &dev_attr_unknown_2);
-	device_remove_file(&interface->dev, &dev_attr_unknown_1);
-	device_remove_file(&interface->dev, &dev_attr_pump_rpm);
-	device_remove_file(&interface->dev, &dev_attr_fan_rpm);
-	device_remove_file(&interface->dev, &dev_attr_temp_liquid);
-	device_remove_file(&interface->dev, &dev_attr_serial_no);
-}
+const struct attribute *KRAKEN_DRIVER_ATTRS[] = {
+	&dev_attr_serial_no.attr,
+	&dev_attr_temp_liquid.attr,
+	&dev_attr_fan_rpm.attr,
+	&dev_attr_pump_rpm.attr,
+	&dev_attr_unknown_1.attr,
+	&dev_attr_unknown_2.attr,
+	&dev_attr_footer_2.attr,
+	&dev_attr_fan_percent.attr,
+	&dev_attr_pump_percent.attr,
+	&dev_attr_led_logo.attr,
+	&dev_attr_leds_ring.attr,
+	&dev_attr_leds_sync.attr,
+	NULL,
+};
 
 static int kraken_x62_initialize(struct usb_kraken *kraken,
                                  char serial_number[])
@@ -361,16 +306,14 @@ static const struct usb_device_id kraken_x62_id_table[] = {
 
 MODULE_DEVICE_TABLE(usb, kraken_x62_id_table);
 
-static struct usb_driver kraken_x62_driver = {
+struct usb_driver kraken_usb_driver = {
 	.name       = DRIVER_NAME,
 	.probe      = kraken_probe,
 	.disconnect = kraken_disconnect,
 	.id_table   = kraken_x62_id_table,
 };
 
-const char *kraken_driver_name = DRIVER_NAME;
-
-module_usb_driver(kraken_x62_driver);
+module_usb_driver(kraken_usb_driver);
 
 MODULE_DESCRIPTION("driver for 1e71:170e devices (NZXT Kraken X62)");
 MODULE_LICENSE("GPL");

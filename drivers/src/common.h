@@ -6,6 +6,7 @@
 #define LEVIATHAN_COMMON_H_INCLUDED
 
 #include <linux/hrtimer.h>
+#include <linux/sysfs.h>
 #include <linux/usb.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
@@ -21,8 +22,9 @@ struct usb_kraken {
 	struct usb_interface *interface;
 	struct kraken_driver_data *data;
 
-	int update_retval;
+	const struct attribute_group *attr_group;
 
+	int update_retval;
 	// any update indicators waiting for an update wait on this; updates
 	// wake everything on this up
 	struct wait_queue_head update_indicator_waitqueue;
@@ -38,9 +40,15 @@ struct usb_kraken {
 };
 
 /**
- * The driver's name.
+ * The driver-specific attributes (which are to be put in the default attribute
+ * group).  NOTE: Must be NULL-terminated.
  */
-extern const char *kraken_driver_name;
+extern const struct attribute *KRAKEN_DRIVER_ATTRS[];
+
+/**
+ * The usb driver's data.
+ */
+extern struct usb_driver kraken_usb_driver;
 
 /**
  * Driver-specific probe called from kraken_probe().  Driver-specific data must
@@ -56,20 +64,9 @@ extern int kraken_driver_probe(struct usb_interface *interface,
 extern void kraken_driver_disconnect(struct usb_interface *interface);
 
 /**
- * The driver's update function, called every second.
+ * The driver's update function, called every update cycle.
  */
 extern int kraken_driver_update(struct usb_kraken *kraken);
-
-/**
- * Create driver-specific device attribute files.  Called from kraken_probe().
- */
-extern int kraken_driver_create_device_files(struct usb_interface *interface);
-
-/**
- * Remove driver-specific device attribute files.  Called from
- * kraken_disconnect().
- */
-extern void kraken_driver_remove_device_files(struct usb_interface *interface);
 
 int kraken_probe(struct usb_interface *interface,
                  const struct usb_device_id *id);

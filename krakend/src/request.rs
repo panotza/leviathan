@@ -1,5 +1,5 @@
-use error::{Res};
-use std::{ffi, fs, io, path};
+use error::Res;
+use std::{ffi, fmt, fs, io, path, time};
 use std::io::prelude::*;
 use std::os::unix::net as unet;
 use yaml;
@@ -27,43 +27,51 @@ impl<'a> Iterator for Requests<'a> {
             Err(ref e) if e.kind() == io::ErrorKind::Interrupted => return None,
             Err(e) => return Some(Err(e.into())),
         };
-        let inner = match RequestInner::receive(connection) {
-            Ok(inner) => inner,
-            Err(e) => return Some(Err(e)),
+        const TIMEOUT_MS: u64 = 250;
+        if let Err(e) = connection.set_read_timeout(
+            Some(time::Duration::from_millis(TIMEOUT_MS))
+        ) {
+            return Some(Err(e.into()));
         };
-        Some(Ok(Request { inner }))
+        let inner = {
+            let input = io::BufReader::new(&connection);
+            match RequestInner::receive(input) {
+                Ok(inner) => inner,
+                Err(e) => return Some(Err(e)),
+            }
+        };
+        Some(Ok(Request { connection, inner }))
     }
 }
 
 pub struct Request {
+    connection: unet::UnixStream,
     inner: Box<RequestInner>,
 }
 
 impl Request {
-    pub fn execute(&mut self) -> Res<()> {
-        self.inner
-            .execute()?
-            .send(self.inner.connection())
+    pub fn execute(self) -> Res<()> {
+        let response = self.inner.execute()?;
+        println!("# response: {}", response);
+        write!(io::BufWriter::new(self.connection), "{}", response)?;
+        Ok(())
     }
 }
 
 trait RequestInner {
-    fn connection(&mut self) -> &mut unet::UnixStream;
-
     fn execute(&self) -> Res<Response>;
 }
 
 impl RequestInner {
-    const DRIVERS_DIR: &'static str = "/sys/bus/usb/drivers";
-    const ATTRIBUTES_DIR: &'static str = "kraken";
-
     const YAML_DOCUMENT_END_MARKER: &'static str = "...";
 
-    fn receive(connection: unet::UnixStream) -> Res<Box<Self>> {
-        println!("# parsing into request ...");
+    fn receive<R>(input: R) -> Res<Box<Self>>
+    where R: io::BufRead
+    {
+        println!("# receiving into request ...");
         let contents = {
             let mut contents = String::new();
-            for line in io::BufReader::new(&connection).lines() {
+            for line in input.lines() {
                 let line = line?;
                 if line.starts_with(Self::YAML_DOCUMENT_END_MARKER) {
                     break;
@@ -73,82 +81,106 @@ impl RequestInner {
             }
             contents
         };
+        println!("# received contents");
         let mut documents = match yaml::YamlLoader::load_from_str(&contents) {
             Ok(documents) => documents,
             Err(e) => {
                 return Ok(Self::invalid(
-                    connection, format!("YAML parse error in request: {}", e)));
+                    format!("YAML parse error in request: {}", e)));
             },
         };
-        if documents.len() != 1 {
-            return Ok(Self::invalid(
-                connection,
-                format!("illegal number of requests: {}", documents.len())));
+        println!("# parsed YAML");
+        let map = match documents.pop() {
+            Some(yaml::Yaml::Hash(map)) => map,
+            Some(_) => {
+                return Ok(Self::invalid("request is not a map".into()));
+            },
+            None => return Ok(Self::invalid("no request".into())),
+        };
+        if documents.pop().is_some() {
+            return Ok(Self::invalid("multiple requests".into()));
         }
-        let map = match documents.pop().expect("no documents") {
-            yaml::Yaml::Hash(map) => map,
-            _ => {
-                return Ok(Self::invalid(connection,
-                                        "request is not a map".into()));
-            },
-        };
-        let req = Self::parse(connection, map);
+        let req = Self::parse(map);
         println!("# parsed into request");
         Ok(req)
     }
 
-    fn parse(connection: unet::UnixStream, map: yaml::yaml::Hash) -> Box<Self> {
+    fn parse(map: yaml::yaml::Hash) -> Box<Self> {
         let request = match map.get(&yaml::Yaml::String("request".into())) {
             Some(yaml::Yaml::String(s)) => s.clone(),
             Some(value) => {
                 return Self::invalid(
-                    connection, format!("illegal 'request' type: {:?}", value));
+                    format!("illegal type for 'request': {:?}", value));
             },
-            None => return Self::invalid(connection, "no 'request'".into()),
+            None => return Self::invalid("'request' not present".into()),
         };
         match request.as_str() {
-            "get" => Box::from(Get { connection, map }),
-            "list-drivers"  => Box::from(ListDrivers { connection }),
-            "set" => Box::from(Set { connection, map }),
+            "get" => Box::from(Get { map }),
+            "list-drivers"  => Box::from(ListDrivers { }),
+            "set" => Box::from(Set { map }),
             "set-update-interval" => {
-                Box::from(SetUpdateInterval { connection, map })
+                Box::from(SetUpdateInterval { map })
             },
             _ => {
-                Self::invalid(connection,
-                              format!("illegal 'request' value: {:?}", request))
+                Self::invalid(
+                    format!("illegal value for 'request': {:?}", request))
             },
         }
     }
 
-    fn invalid(connection: unet::UnixStream, error_msg: String) -> Box<Self> {
+    fn invalid(error_msg: String) -> Box<Self> {
         Box::from(Invalid {
-            connection,
             response: Response::Error(error_msg),
         })
     }
 
-    fn attributes_dir(map: &yaml::yaml::Hash) ->
+    const DRIVER_NAMES: [&'static str; 2] = ["kraken", "kraken_x62"];
+    const DRIVERS_DIR: &'static str = "/sys/bus/usb/drivers";
+    const ATTRIBUTES_DIR: &'static str = "kraken";
+
+    fn get_attribute_path<'a, I>(map: &yaml::yaml::Hash, forbidden: I) ->
+        Result<path::PathBuf, Response>
+    where I: IntoIterator<Item = &'a str>
+    {
+        let attributes_dir = Self::get_attributes_dir(map)?;
+        let attribute_name = Self::get_file_name(map, "attribute")?;
+        let attribute_name = Self::as_attribute_name(&attribute_name,
+                                                     forbidden)?
+            .ok_or_else(|| Response::Error(
+                format!("forbidden attribute name: {:?}", attribute_name)))?;
+        Ok(attributes_dir.join(attribute_name))
+    }
+
+    fn get_attributes_dir(map: &yaml::yaml::Hash) ->
         Result<path::PathBuf, Response>
     {
-        let driver_name = Self::key_file_name(map, "driver")?;
-        let device_name = Self::key_file_name(map, "device")?;
+        let driver_name = Self::get_file_name(map, "driver")?;
+        let driver_name = Self::as_driver_name(&driver_name)?
+            .ok_or_else(|| Response::Error(
+                format!("illegal driver name: {:?}", driver_name)))?;
+
+        let device_name = Self::get_file_name(map, "device")?;
+        let device_name = Self::as_device_name(&device_name)?
+            .ok_or_else(|| Response::Error(
+                format!("illegal device name: {:?}", device_name)))?;
 
         let drivers_dir = path::Path::new(Self::DRIVERS_DIR);
         let attributes_dir = path::Path::new(Self::ATTRIBUTES_DIR);
+
         let attributes_dir: path::PathBuf = [
             drivers_dir, driver_name.as_ref(), device_name.as_ref(),
-            attributes_dir]
-            .iter().collect();
+            attributes_dir
+        ].iter().collect();
 
         if attributes_dir.exists() {
             Ok(attributes_dir)
         } else {
-            Err(Response::Error(format!("device and/or driver does not exist: \
+            Err(Response::Error(format!("driver and/or device does not exist: \
                                          {:?}", attributes_dir)))
         }
     }
 
-    fn key_file_name(map: &yaml::yaml::Hash, key: &str) ->
+    fn get_file_name(map: &yaml::yaml::Hash, key: &str) ->
         Result<ffi::OsString, Response>
     {
         let value = match map.get(&yaml::Yaml::String(key.into())) {
@@ -160,63 +192,75 @@ impl RequestInner {
             None => return Err(Response::Error(format!("no '{}'", key))),
         };
         match path::Path::new(value).file_name() {
-            Some(file_name) => Ok(file_name.into()),
+            Some(file_name) => Ok(file_name.to_owned().into()),
             None => {
                 Err(Response::Error(format!("invalid '{}': {:?}", key, value)))
             },
         }
     }
+
+    fn as_driver_name(file_name: &ffi::OsStr) ->
+        Result<Option<&ffi::OsStr>, Response>
+    {
+        Ok(Self::DRIVER_NAMES.iter()
+           .find(|s| ffi::OsStr::new(s) == file_name)
+           .and(Some(file_name)))
+    }
+
+    fn as_device_name(file_name: &ffi::OsStr) ->
+        Result<Option<String>, Response>
+    {
+        let file_name = file_name.to_str()
+            .ok_or_else(|| Response::Error(
+                format!("cannot convert device name to string: {:?}",
+                        file_name)))?
+            .to_owned();
+        if file_name.contains(":") {
+            Ok(Some(file_name))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn as_attribute_name<'a, I>(file_name: &ffi::OsStr, forbidden: I) ->
+        Result<Option<&ffi::OsStr>, Response>
+    where I: IntoIterator<Item = &'a str>
+    {
+        Ok(match forbidden.into_iter()
+           .find(|s| ffi::OsStr::new(s) == file_name) {
+               Some(_) => None,
+               None => Some(file_name)
+           })
+    }
 }
 
 struct Invalid {
-    connection: unet::UnixStream,
     response: Response,
 }
 
 impl RequestInner for Invalid {
-    fn connection(&mut self) -> &mut unet::UnixStream {
-        &mut self.connection
-    }
-
     fn execute(&self) -> Res<Response> {
         Ok(self.response.clone())
     }
 }
 
 struct Get {
-    connection: unet::UnixStream,
     map: yaml::yaml::Hash,
 }
 
 impl Get {
-    const ATTRIBUTES_FORBIDDEN: &'static [&'static str] = &["update_indicator"];
+    const ATTRIBUTES_FORBIDDEN: [&'static str; 1] = ["update_sync"];
 }
 
 impl RequestInner for Get {
-    fn connection(&mut self) -> &mut unet::UnixStream {
-        &mut self.connection
-    }
-
     fn execute(&self) -> Res<Response> {
-        let attributes_dir = match RequestInner::attributes_dir(&self.map) {
-            Ok(dir) => dir,
+        let path = match RequestInner::get_attribute_path(
+            &self.map, Self::ATTRIBUTES_FORBIDDEN.iter().map(|&s| s)
+        ) {
+            Ok(path) => path,
             Err(response) => return Ok(response),
         };
 
-        let attribute_name = match RequestInner::key_file_name(&self.map,
-                                                               "attribute") {
-            Ok(file_name) => file_name,
-            Err(response) => return Ok(response),
-        };
-        if Self::ATTRIBUTES_FORBIDDEN.iter()
-            .find(|&&s| ffi::OsStr::new(s) == attribute_name)
-            .is_some()
-        {
-            return Ok(Response::Error(
-                format!("forbidden attribute: {:?}", attribute_name)));
-        }
-
-        let path = attributes_dir.join(attribute_name);
         let mut file = match fs::File::open(&path) {
             Ok(file) => file,
             Err(e) => return Ok(Response::Error(
@@ -250,21 +294,14 @@ impl RequestInner for Get {
     }
 }
 
-struct ListDrivers {
-    connection: unet::UnixStream,
-}
+struct ListDrivers { }
 
 impl RequestInner for ListDrivers {
-    fn connection(&mut self) -> &mut unet::UnixStream {
-        &mut self.connection
-    }
-
     fn execute(&self) -> Res<Response> {
         let drivers_dir = path::Path::new(RequestInner::DRIVERS_DIR);
-        const DRIVER_NAMES: &[&'static str] = &["kraken", "kraken_x62"];
-
         let mut drivers = yaml::yaml::Hash::new();
-        for &name in DRIVER_NAMES {
+
+        for &name in RequestInner::DRIVER_NAMES.iter() {
             let driver_name = path::Path::new(name);
             let driver_path = drivers_dir.join(driver_name);
             let entries = match fs::read_dir(driver_path) {
@@ -273,21 +310,16 @@ impl RequestInner for ListDrivers {
             };
             let mut devices = vec![];
             for entry in entries {
-                let entry = match entry {
-                    Ok(entry) => entry,
+                let device_name = match entry {
+                    Ok(entry) => entry.file_name(),
                     Err(_) => continue,
                 };
-                let device_name = match entry.file_name().into_string() {
-                    Ok(name) => name,
-                    Err(name) => {
-                        return Ok(Response::Error(
-                            format!("cannot convert device name to string: \
-                                     {:?}", name)));
-                    },
-                };
-                if !device_name.contains(":") {
-                    continue;
-                }
+                let device_name =
+                    match RequestInner::as_device_name(&device_name) {
+                        Ok(Some(device_name)) => device_name,
+                        Ok(None) => continue,
+                        Err(response) => return Ok(response),
+                    };
                 devices.push(yaml::Yaml::String(device_name.into()));
             }
             drivers.insert(yaml::Yaml::String(name.into()),
@@ -305,32 +337,22 @@ impl RequestInner for ListDrivers {
 }
 
 struct Set {
-    connection: unet::UnixStream,
     #[allow(dead_code)]
     map: yaml::yaml::Hash,
 }
 
 impl RequestInner for Set {
-    fn connection(&mut self) -> &mut unet::UnixStream {
-        &mut self.connection
-    }
-
     fn execute(&self) -> Res<Response> {
         Ok(Response::Error("TODO".into()))
     }
 }
 
 struct SetUpdateInterval {
-    connection: unet::UnixStream,
     #[allow(dead_code)]
     map: yaml::yaml::Hash,
 }
 
 impl RequestInner for SetUpdateInterval {
-    fn connection(&mut self) -> &mut unet::UnixStream {
-        &mut self.connection
-    }
-
     fn execute(&self) -> Res<Response> {
         Ok(Response::Error("TODO".into()))
     }
@@ -342,8 +364,8 @@ enum Response {
     Error(String),
 }
 
-impl Response {
-    fn send(&self, connection: &mut unet::UnixStream) -> Res<()> {
+impl fmt::Display for Response {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let response = match self {
             Response::Error(msg) => {
                 let mut map = yaml::yaml::Hash::new();
@@ -359,18 +381,9 @@ impl Response {
             },
         };
 
-        let response = {
-            let mut s = String::new();
-            yaml::YamlEmitter::new(&mut s)
-                .dump(&yaml::Yaml::Hash(response))?;
-            s.push('\n');
-            s.push_str(RequestInner::YAML_DOCUMENT_END_MARKER);
-            s.push('\n');
-            s
-        };
-        println!("# response: {}", response);
-
-        connection.write_all(response.as_bytes())
-            .map_err(|e| e.into())
+        yaml::YamlEmitter::new(f)
+            .dump(&yaml::Yaml::Hash(response))
+            .map_err(|_| fmt::Error {})?;
+        write!(f, "\n{}\n", RequestInner::YAML_DOCUMENT_END_MARKER)
     }
 }

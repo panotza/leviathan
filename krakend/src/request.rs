@@ -4,11 +4,11 @@ use std::io::prelude::*;
 use std::os::unix::net as unet;
 use yaml;
 
-pub struct Requests<'a> {
+pub struct SocketRequests<'a> {
     listener: &'a unet::UnixListener,
 }
 
-impl<'a> Requests<'a> {
+impl<'a> SocketRequests<'a> {
     pub fn new(listener: &'a unet::UnixListener) -> Self {
         Self {
             listener
@@ -16,10 +16,11 @@ impl<'a> Requests<'a> {
     }
 }
 
-impl<'a> Iterator for Requests<'a> {
-    type Item = Res<Request>;
+impl<'a> Iterator for SocketRequests<'a> {
+    type Item = Res<SocketRequest>;
 
-    /// Block until the next request arrives, then parse it.
+    /// Block until the next request connection arrives, then return a new
+    /// request from it.
     fn next(&mut self) -> Option<Self::Item> {
         println!("# accepting connection ...");
         let (connection, _) = match self.listener.accept() {
@@ -33,39 +34,39 @@ impl<'a> Iterator for Requests<'a> {
         ) {
             return Some(Err(e.into()));
         };
-        let inner = {
-            let input = io::BufReader::new(&connection);
-            match RequestInner::receive(input) {
-                Ok(inner) => inner,
-                Err(e) => return Some(Err(e)),
-            }
-        };
-        Some(Ok(Request { connection, inner }))
+        Some(Ok(SocketRequest { connection }))
     }
 }
 
-pub struct Request {
+/// Unread and unexecuted request with its open socket connection.
+pub struct SocketRequest {
     connection: unet::UnixStream,
-    inner: Box<RequestInner>,
 }
 
-impl Request {
-    pub fn execute(self) -> Res<()> {
-        let response = self.inner.execute()?;
+impl SocketRequest {
+    /// Read and execute this request, closing its connection.
+    pub fn read_and_execute(self) -> Res<()> {
+        let request = {
+            let input = io::BufReader::new(&self.connection);
+            Request::read(input)?
+        };
+        let response = request.execute()?;
         println!("# response: {}", response);
         write!(io::BufWriter::new(self.connection), "{}", response)?;
         Ok(())
     }
 }
 
-trait RequestInner {
+/// Some type of request.
+trait Request {
     fn execute(&self) -> Res<Response>;
 }
 
-impl RequestInner {
+impl Request {
     const YAML_DOCUMENT_END_MARKER: &'static str = "...";
 
-    fn receive<R>(input: R) -> Res<Box<Self>>
+    /// Read and parse a request into the proper request type.
+    fn read<R>(input: R) -> Res<Box<Self>>
     where R: io::BufRead
     {
         println!("# receiving into request ...");
@@ -238,7 +239,7 @@ struct Invalid {
     response: Response,
 }
 
-impl RequestInner for Invalid {
+impl Request for Invalid {
     fn execute(&self) -> Res<Response> {
         Ok(self.response.clone())
     }
@@ -252,9 +253,9 @@ impl Get {
     const ATTRIBUTES_FORBIDDEN: [&'static str; 1] = ["update_sync"];
 }
 
-impl RequestInner for Get {
+impl Request for Get {
     fn execute(&self) -> Res<Response> {
-        let path = match RequestInner::get_attribute_path(
+        let path = match Request::get_attribute_path(
             &self.map, Self::ATTRIBUTES_FORBIDDEN.iter().map(|&s| s)
         ) {
             Ok(path) => path,
@@ -296,12 +297,12 @@ impl RequestInner for Get {
 
 struct ListDrivers { }
 
-impl RequestInner for ListDrivers {
+impl Request for ListDrivers {
     fn execute(&self) -> Res<Response> {
-        let drivers_dir = path::Path::new(RequestInner::DRIVERS_DIR);
+        let drivers_dir = path::Path::new(Request::DRIVERS_DIR);
         let mut drivers = yaml::yaml::Hash::new();
 
-        for &name in RequestInner::DRIVER_NAMES.iter() {
+        for &name in Request::DRIVER_NAMES.iter() {
             let driver_name = path::Path::new(name);
             let driver_path = drivers_dir.join(driver_name);
             let entries = match fs::read_dir(driver_path) {
@@ -315,7 +316,7 @@ impl RequestInner for ListDrivers {
                     Err(_) => continue,
                 };
                 let device_name =
-                    match RequestInner::as_device_name(&device_name) {
+                    match Request::as_device_name(&device_name) {
                         Ok(Some(device_name)) => device_name,
                         Ok(None) => continue,
                         Err(response) => return Ok(response),
@@ -341,7 +342,7 @@ struct Set {
     map: yaml::yaml::Hash,
 }
 
-impl RequestInner for Set {
+impl Request for Set {
     fn execute(&self) -> Res<Response> {
         Ok(Response::Error("TODO".into()))
     }
@@ -352,7 +353,7 @@ struct SetUpdateInterval {
     map: yaml::yaml::Hash,
 }
 
-impl RequestInner for SetUpdateInterval {
+impl Request for SetUpdateInterval {
     fn execute(&self) -> Res<Response> {
         Ok(Response::Error("TODO".into()))
     }
@@ -384,6 +385,6 @@ impl fmt::Display for Response {
         yaml::YamlEmitter::new(f)
             .dump(&yaml::Yaml::Hash(response))
             .map_err(|_| fmt::Error {})?;
-        write!(f, "\n{}\n", RequestInner::YAML_DOCUMENT_END_MARKER)
+        write!(f, "\n{}\n", Request::YAML_DOCUMENT_END_MARKER)
     }
 }

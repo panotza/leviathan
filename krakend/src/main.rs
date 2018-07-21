@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate clap;
 extern crate libc;
+extern crate log;
 extern crate yaml_rust as yaml;
 extern crate xdg;
 
@@ -11,10 +12,11 @@ mod request;
 
 use error::{Error, Res};
 use init_system as is;
-use std::{ffi, fmt, fs, io, path, process};
+use std::{ffi, fmt, fs, io, path, process, thread};
 use std::io::prelude::*;
 use std::os::unix::net as unet;
 use std::str::FromStr;
+use std::sync::mpsc;
 
 fn main() {
     process::exit(match run() {
@@ -95,23 +97,61 @@ fn run() -> Res<()> {
     }
 
     let program_dir = ProgramDir::acquire()?;
-
     let socket_file = init_system.socket_file(&program_dir)?;
     println!("socket_file: {:?}", socket_file);
-
-    let requests = request::Requests::new(&socket_file.listener);
+    let mut socket_requests = request::SocketRequests::new(
+        &socket_file.listener
+    );
 
     println!("startup complete");
     init_system.notify().startup_end()?;
 
-    for request in requests {
-        request?.execute()?;
-    }
+    let res = execute_requests(&mut socket_requests);
 
     println!("shutdown starting");
     init_system.notify().shutdown_start()?;
 
-    Ok(())
+    res
+}
+
+fn execute_requests(socket_requests: &mut request::SocketRequests) -> Res<()> {
+    let (requests_in, requests_out) = mpsc::channel::<request::SocketRequest>();
+
+    // Executor loop: process each request, exit on channel hang-up (end of
+    // loop), and on execute error (returning the error)
+    const EXECUTOR_NAME: &'static str = "request_executor";
+    let executor = thread::Builder::new()
+        .name(EXECUTOR_NAME.into())
+        .spawn(move || {
+            for request in requests_out {
+                request.read_and_execute()?;
+            }
+            Ok(())
+        })?;
+
+    // Main loop: accept new requests, exit when there are no more (end of
+    // loop), on accept error, or on channel hang-up (returning the error
+    // returned by from the executor, if any); in any case, wait for the
+    // executor to finish if it's running
+    for request in socket_requests {
+        match request {
+            Ok(request) => {
+                if let Err(_) = requests_in.send(request) {
+                    executor.join().unwrap()?;
+                    panic!("unexpected: thread {} exited normally",
+                           EXECUTOR_NAME);
+                }
+            },
+            Err(e) => {
+                // drop channel and wait on any pending requests
+                drop(requests_in);
+                executor.join().unwrap()?;
+                return Err(e);
+            },
+        };
+    }
+    // wait on any remaining requests
+    executor.join().unwrap()
 }
 
 fn fork_and_exit() -> Res<()> {

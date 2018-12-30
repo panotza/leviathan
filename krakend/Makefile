@@ -2,6 +2,7 @@ CARGO = cargo
 CARGO_FLAGS =
 GROUPADD = groupadd
 INSTALL = install
+SUDO = sudo
 SYSTEMCTL = systemctl
 
 BUILD_FLAGS = --release
@@ -21,14 +22,14 @@ clean :
 export prefix = /usr/local
 
 .PHONY : install
-install :
-	$(INSTALL) -s target/release/krakend $(prefix)/bin/
+install : build
+	$(SUDO) $(INSTALL) -s target/release/krakend $(prefix)/bin/
 
 export socket_group = krakend
 
 .PHONY : install-systemd
 install-systemd : install
 	./systemd/build.sh
-	$(INSTALL) -C systemd/target/* /etc/systemd/system/
-	$(GROUPADD) -fr $(socket_group)
-	$(SYSTEMCTL) enable krakend
+	$(SUDO) $(INSTALL) -C systemd/target/* /etc/systemd/system/
+	$(SUDO) $(GROUPADD) -fr $(socket_group)
+	$(SUDO) $(SYSTEMCTL) enable krakend

@@ -7,6 +7,7 @@ SYSTEMCTL = systemctl
 
 BUILD_FLAGS = --release
 CLEAN_FLAGS =
+SYSTEMCTL_FLAGS =
 
 
 .PHONY : build
@@ -26,10 +27,11 @@ install : build
 	$(SUDO) $(INSTALL) -s target/release/krakend $(prefix)/bin/
 
 export socket_group = krakend
+systemd_dir = /etc/systemd/system
 
 .PHONY : install-systemd
 install-systemd : install
 	./systemd/build.sh
-	$(SUDO) $(INSTALL) -C systemd/target/* /etc/systemd/system/
+	$(SUDO) $(INSTALL) -C systemd/target/* $(systemd_dir)/
 	$(SUDO) $(GROUPADD) -fr $(socket_group)
-	$(SUDO) $(SYSTEMCTL) enable krakend
+	$(SUDO) $(SYSTEMCTL) $(SYSTEMCTL_FLAGS) enable krakend

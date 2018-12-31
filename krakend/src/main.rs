@@ -6,6 +6,7 @@ extern crate xdg;
 mod c;
 mod error;
 mod init_system;
+mod request;
 
 use error::{Error, Res};
 use init_system as is;
@@ -93,20 +94,25 @@ fn run() -> Res<()> {
     }
 
     let program_dir = ProgramDir::acquire()?;
-
     let socket_file = init_system.socket_file(&program_dir)?;
     println!("socket_file: {:?}", socket_file);
+    let mut listener = request::RequestListener::new(&socket_file.listener);
 
     println!("startup complete");
     init_system.notify().startup_end()?;
-
-    println!("# TODO: == main loop start ==");
-    std::thread::sleep(std::time::Duration::from_secs(20));
-    println!("# TODO: == main loop end ==");
-
+    let res = execute_requests(&mut listener);
     println!("shutdown starting");
     init_system.notify().shutdown_start()?;
 
+    res
+}
+
+/// Execute all incoming connections in a loop.
+fn execute_requests(listener: &mut request::RequestListener) -> Res<()> {
+    for connection in listener {
+        let connection = connection?;
+        connection.execute()?;
+    }
     Ok(())
 }
 

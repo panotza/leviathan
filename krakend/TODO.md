@@ -1,4 +1,8 @@
-- [ ] crate feature for systemd
+- [ ] Communication protocol
+
+  - [ ] Describe what jsonrpc is.
+
+  - [ ] Definition of the procedures.
 
 - [ ] If SIGTERM is received, shut down the daemon and exit cleanly.
 

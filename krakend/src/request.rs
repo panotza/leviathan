@@ -61,7 +61,7 @@ impl RequestConnection {
             if read == u32_buffer.len() {
                 // TODO: Replace all this with from_be_bytes() once stable.
                 let length: u32 = unsafe {
-                    // NOTE: [unsafe] OK because the buffer is the correct size.
+                    // NOTE: [unsafe] OK, the buffer is the correct size
                     mem::transmute(u32_buffer)
                 };
                 Some(u32::from_be(length))

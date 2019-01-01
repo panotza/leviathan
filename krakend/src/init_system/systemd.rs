@@ -54,9 +54,11 @@ impl super::InitSystem for InitSystem {
             return Err(Error::ListenFdsKind);
         }
 
-        // NOTE: unsafe is OK, as fd is checked to be a listening, UNIX, STREAM
-        // socket beforehand
-        let listener = unsafe { unet::UnixListener::from_raw_fd(fd) };
+        let listener = unsafe {
+            // NOTE: [unsafe] OK, fd is checked to be a listening, UNIX, STREAM
+            // socket beforehand
+            unet::UnixListener::from_raw_fd(fd)
+        };
         Ok(::SocketFile::new(listener, None))
     }
 }

@@ -67,7 +67,7 @@ fn run() -> Res<()> {
                     name or a numeric id")
              .default_value(&socket_file_group_default)
              .takes_value(true)
-             .value_name("GROUP"))
+             .value_name("{GROUP-NAME|GID}"))
         .get_matches_safe()?;
 
     let init_system_kind = value_t!(args.value_of("init-system"),
@@ -90,7 +90,7 @@ fn run() -> Res<()> {
 
     if init_system.daemonize() {
         fork_and_exit()?;
-        println!("forked process: in child: PID {}", process::id());
+        println!("forked process: in child (PID {})", process::id());
     }
 
     let program_dir = ProgramDir::acquire()?;

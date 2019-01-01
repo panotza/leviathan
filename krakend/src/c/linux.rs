@@ -5,8 +5,10 @@ use std::os::unix::ffi::OsStrExt;
 
 pub fn chmod(path: &path::Path, mode: ChmodMode) -> Result<(), Errno> {
     let path = path.as_os_str().as_bytes().as_ptr() as *const libc::c_char;
-    // NOTE: unsafe is OK, as all arguments are validated
-    let res = unsafe { libc::chmod(path, mode.into()) };
+    let res = unsafe {
+        // NOTE: [unsafe] OK, all arguments are validated
+        libc::chmod(path, mode.into())
+    };
     match res {
         0 => Ok(()),
         _ => Err(Errno::from_global_errno()),
@@ -85,8 +87,10 @@ pub fn chown(path: &path::Path, owner: ChownUid, group: ChownGid) ->
     Result<(), Errno>
 {
     let path = path.as_os_str().as_bytes().as_ptr() as *const libc::c_char;
-    // NOTE: unsafe is OK, as all arguments are validated
-    let res = unsafe { libc::chown(path, owner.into(), group.into()) };
+    let res = unsafe {
+        // NOTE: [unsafe] OK, all arguments are validated
+        libc::chown(path, owner.into(), group.into())
+    };
     match res {
         0 => Ok(()),
         _ => Err(Errno::from_global_errno()),
@@ -122,8 +126,10 @@ impl From<ChownGid> for libc::gid_t {
 }
 
 pub fn fork() -> Result<ForkPid, Errno> {
-    // NOTE: unsafe is OK, as fork() is always safe to call
-    let res = unsafe { libc::fork() };
+    let res = unsafe {
+        // NOTE: [unsafe] OK, fork() is always safe to call
+        libc::fork()
+    };
     match res {
         -1 => Err(Errno::from_global_errno()),
         0 => Ok(ForkPid::Parent),
@@ -137,23 +143,29 @@ pub enum ForkPid {
 }
 
 pub fn getgid() -> libc::gid_t {
-    // NOTE: unsafe is OK, as getgid() is always successful
-    let gid = unsafe { libc::getgid() };
+    let gid = unsafe {
+        // NOTE: [unsafe] OK, getgid() is always successful
+        libc::getgid()
+    };
     gid
 }
 
 pub fn getgrgid_r(gid: libc::gid_t) -> Result<Option<GetgrGroup>, Errno> {
     GetgrGroup::from_getgr_r(|grp, buf, buflen, result| {
-        // NOTE: unsafe is OK, as GetgrGroup::from_getgr_r makes sure to
-        // validate all arguments
-        unsafe { libc::getgrgid_r(gid, grp, buf, buflen, result) }
+        unsafe {
+            // NOTE: [unsafe] OK, GetgrGroup::from_getgr_r makes sure to
+            // validate all arguments
+            libc::getgrgid_r(gid, grp, buf, buflen, result)
+        }
     })
 }
 
 pub fn getgrnam_r(name: &ffi::CStr) -> Result<Option<GetgrGroup>, Errno> {
     GetgrGroup::from_getgr_r(|grp, buf, buflen, result| {
-        // NOTE: unsafe is OK, see reason in getgrgid_r()
-        unsafe { libc::getgrnam_r(name.as_ptr(), grp, buf, buflen, result) }
+        unsafe {
+            // NOTE: [unsafe] OK, see reason in getgrgid_r()
+            libc::getgrnam_r(name.as_ptr(), grp, buf, buflen, result)
+        }
     })
 }
 
@@ -167,14 +179,18 @@ impl GetgrGroup {
     where F: FnMut(*mut libc::group, *mut libc::c_char, libc::size_t,
                    *mut *mut libc::group) -> libc::c_int
     {
-        // NOTE: unsafe is OK, for if group is returned then it was successfully
-        // filled by the getgr_r and therefore has valid contents
-        let mut group: libc::group = unsafe { mem::uninitialized() };
+        let mut group: libc::group = unsafe {
+            // NOTE: [unsafe] OK, for if group is returned then it was
+            // successfully filled by getgr_r and therefore has valid contents
+            mem::uninitialized()
+        };
         let mut result: *mut libc::group = ptr::null_mut();
         let mut buffer = {
             const CAPACITY_DEFAULT: usize = 128;
-            // NOTE: unsafe is OK, as sysconf() handles any value safely
-            let capacity = unsafe { libc::sysconf(libc::_SC_GETGR_R_SIZE_MAX) };
+            let capacity = unsafe {
+                // NOTE: [unsafe] OK, sysconf() handles any value safely
+                libc::sysconf(libc::_SC_GETGR_R_SIZE_MAX)
+            };
             let capacity = match capacity {
                 -1 => CAPACITY_DEFAULT,
                 size => size as usize,
@@ -207,15 +223,19 @@ impl GetgrGroup {
 
     #[allow(dead_code)]
     pub fn name(&self) -> &ffi::CStr {
-        // NOTE: unsafe is OK, as gr_name points into the buffer, which has the
-        // lifetime of self
-        unsafe { ffi::CStr::from_ptr(self.group.gr_name) }
+        unsafe {
+            // NOTE: [unsafe] OK, gr_name points into the buffer, which has the
+            // lifetime of self
+            ffi::CStr::from_ptr(self.group.gr_name)
+        }
     }
 
     #[allow(dead_code)]
     pub fn password(&self) -> &ffi::CStr {
-        // NOTE: unsafe is OK, see reason in name()
-        unsafe { ffi::CStr::from_ptr(self.group.gr_passwd) }
+        unsafe {
+            // NOTE: [unsafe] OK, see reason in name()
+            ffi::CStr::from_ptr(self.group.gr_passwd)
+        }
     }
 
     pub fn gid(&self) -> libc::gid_t {
@@ -240,16 +260,23 @@ impl<'a> Iterator for GetgrGroupMembers<'a> {
     type Item = &'a ffi::CStr;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // NOTE: unsafe is OK, as mem_next points to valid memory in the buffer
-        let mem_ref = unsafe { self.mem_next.as_ref() };
+        let mem_ref = unsafe {
+            // NOTE: [unsafe] OK, mem_next points to valid memory in the buffer
+            self.mem_next.as_ref()
+        };
         match mem_ref {
             None => None,
             Some(member) => {
-                // NOTE: unsafe is OK, as mem_next always points to valid memory
-                // in the buffer as long as it's not incremented if it's NULL
-                self.mem_next = unsafe { self.mem_next.add(1) };
-                // NOTE: unsafe is OK, as *member points into the buffer
-                let member = unsafe { ffi::CStr::from_ptr(*member) };
+                self.mem_next = unsafe {
+                    // NOTE: [unsafe] OK, mem_next always points to valid memory
+                    // in the buffer as long as it's not incremented if it's
+                    // NULL
+                    self.mem_next.add(1)
+                };
+                let member = unsafe {
+                    // NOTE: [unsafe] OK, *member points into the buffer
+                    ffi::CStr::from_ptr(*member)
+                };
                 Some(member)
             },
         }

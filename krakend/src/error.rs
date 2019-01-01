@@ -42,7 +42,7 @@ impl fmt::Display for Error {
             Error::ClapDisplayed(e) => e.fmt(f),
             Error::Fork(e) => write!(f, "cannot fork: {}", e),
             Error::Forked(pid) => {
-                write!(f, "forked process: child PID {}", pid)
+                write!(f, "forked process (child PID {})", pid)
             },
             Error::Gid(e, group) => {
                 write!(f, "cannot access GID of group {}: {}", group, e)
@@ -134,9 +134,9 @@ pub struct Errno {
 
 impl Errno {
     pub fn from_global_errno() -> Self {
-        // NOTE: unsafe is OK, as errno is always safe to access (though
-        // possibly not thread-safe)
         let errno = unsafe {
+            // NOTE: [unsafe] OK, errno is always safe to access (though
+            // possibly not thread-safe)
             *libc::__errno_location().as_ref()
                 .expect("errno location is NULL")
         };
@@ -146,9 +146,9 @@ impl Errno {
 
 impl fmt::Display for Errno {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // NOTE: unsafe is ok, as strerror() returns valid strings for all
-        // values (though not thread-safe)
         let msg = unsafe {
+            // NOTE: [unsafe] OK, strerror() returns valid strings for all
+            // values (though not thread-safe)
             ffi::CStr::from_ptr(libc::strerror(self.errno))
         }.to_str()
             .map_err(|_| fmt::Error::default())?;

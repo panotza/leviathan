@@ -16,8 +16,8 @@ extern "C" {
 
 pub fn is_socket(fd: uio::RawFd, family: AddressFamily, type_: SocketType,
                  listening: Listening) -> Result<bool, Errno> {
-    // NOTE: unsafe is OK, as all arguments are validated
     let res = unsafe {
+        // NOTE: [unsafe] OK, all arguments are validated
         sd_is_socket(fd.into(), family.into(), type_.into(), listening.into())
     };
     if res < 0 {
@@ -92,8 +92,10 @@ impl From<Listening> for libc::c_int {
 
 pub fn listen_fds(unset_environment: bool) -> Result<ListenFds, Errno> {
     let unset_environment = if !unset_environment { 0 } else { 1 };
-    // NOTE: unsafe is OK, as all arguments are validated
-    let res = unsafe { sd_listen_fds(unset_environment) };
+    let res = unsafe {
+        // NOTE: [unsafe] OK, all arguments are validated
+        sd_listen_fds(unset_environment)
+    };
     if res < 0 {
         Err(Errno::from(-res))
     } else {
@@ -141,8 +143,10 @@ pub fn notify(unset_environment: bool, state: NotifyState) ->
     let state = ffi::CString::new(state)
         .expect("state is invalid C string");
 
-    // NOTE: unsafe is OK, as all arguments are validated
-    let res = unsafe { sd_notify(unset_environment, state.as_ptr()) };
+    let res = unsafe {
+        // NOTE: [unsafe] OK, all arguments are validated
+        sd_notify(unset_environment, state.as_ptr())
+    };
     if res < 0 {
         Err(Errno::from(-res))
     } else if res == 0 {

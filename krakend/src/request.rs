@@ -1,26 +1,34 @@
 /// Handling request connections.
 
 use error::Res;
-use std;
-use std::{io, mem, time};
+use jrpc::futures::Future;
+use jsonrpc_core as jrpc;
+use serde_json;
+use serde::{Deserialize, Serialize};
+use std::{io, time};
 use std::io::prelude::*;
 use std::os::unix::net as unet;
 
+use JRPC_VERSION;
+
 /// Queue of request connections, read from a socket listener.
-pub struct RequestListener<'a> {
-    listener: &'a unet::UnixListener,
+pub struct RequestListener<'h, 'l> {
+    listener: &'l unet::UnixListener,
+    rpc_handler: &'h jrpc::IoHandler,
 }
 
-impl<'a> RequestListener<'a> {
-    pub fn new(listener: &'a unet::UnixListener) -> Self {
+impl<'h, 'l> RequestListener<'h, 'l> {
+    pub fn new(listener: &'l unet::UnixListener,
+               rpc_handler: &'h jrpc::IoHandler) -> Self {
         Self {
-            listener
+            listener,
+            rpc_handler,
         }
     }
 }
 
-impl<'a> Iterator for RequestListener<'a> {
-    type Item = Res<RequestConnection>;
+impl<'h, 'l> Iterator for RequestListener<'h, 'l> {
+    type Item = Res<RequestConnection<'h>>;
 
     /// Block until the next request connection arrives, then yield it.
     fn next(&mut self) -> Option<Self::Item> {
@@ -36,84 +44,85 @@ impl<'a> Iterator for RequestListener<'a> {
         ) {
             return Some(Err(e.into()));
         };
+        println!("# established connection");
         Some(Ok(
-            RequestConnection { connection }
+            RequestConnection {
+                connection,
+                rpc_handler: self.rpc_handler,
+            }
         ))
     }
 }
 
-/// Unread and unexecuted requests with their open socket connection.
-pub struct RequestConnection {
+/// Unread and unexecuted request(s) with its open socket connection.
+pub struct RequestConnection<'h> {
     connection: unet::UnixStream,
+    rpc_handler: &'h jrpc::IoHandler,
 }
 
-impl RequestConnection {
-    /// Read and execute these requests, closing the connection.
+impl<'h> RequestConnection<'h> {
+    /// Read and execute this request, closing the connection.
     pub fn execute(mut self) -> Res<()> {
-        // TODO: Implement parsing and sending back proper RPC errors.
-        let request_length = {
-            let mut u32_buffer = [0u8; mem::size_of::<u32>()];
-            let read = self.connection.read(&mut u32_buffer)
-                .or_else(|e| match e.kind() {
-                    io::ErrorKind::WouldBlock => Ok(0),
-                    _ => Err(e),
-                })?;
-            if read == u32_buffer.len() {
-                // TODO: Replace all this with from_be_bytes() once stable.
-                let length: u32 = unsafe {
-                    // NOTE: [unsafe] OK, the buffer is the correct size
-                    mem::transmute(u32_buffer)
-                };
-                Some(u32::from_be(length))
-            } else {
-                eprintln!("warn: invalid request length: only {} bytes read",
-                          read);
-                None
-            }
-        };
-        let request_length = match request_length {
-            Some(length) if length != 0 => length,
-            Some(length) => {
-                write!(self.connection, "<INVALID REQUEST LENGTH {}>",
-                       length)?;
+        let request = match self.read_request()? {
+            Ok(request) => request,
+            Err(error) => {
+                eprintln!("warn: cannot read request: {:?}", error);
+                let response = jrpc::Response::from(error, JRPC_VERSION);
+                self.write_response(&response)?;
                 return Ok(());
+            },
+        };
+
+        // NOTE: [expect] This should never happen
+        let response = self.rpc_handler.handle_rpc_request(request).wait()
+            .expect("handler call error");
+        match response {
+            Some(response) => {
+                println!("# sending response to method call");
+                self.write_response(&response)
             },
             None => {
-                write!(self.connection, "<INVALID REQUEST LENGTH>")?;
-                return Ok(());
+                println!("# sending no response to notification");
+                Ok(())
             },
-        };
-        let request_length = if request_length <= (std::usize::MAX as u32) {
-            request_length as usize
-        } else {
-            write!(self.connection, "<REQUEST LENGTH TOO LARGE>")?;
-            return Ok(());
-        };
-        let request = {
-            let mut buffer = vec![0; request_length];
-            let read = self.connection.read(&mut buffer[..])
-                .or_else(|e| match e.kind() {
-                    io::ErrorKind::WouldBlock => Ok(0),
-                    _ => Err(e),
-                })?;
-            if read == buffer.len() {
-                String::from_utf8(buffer)
-            } else {
-                write!(self.connection,
-                       "<INVALID REQUEST LENGTH: read={} < buffer.len()={}>",
-                       read, buffer.len())?;
-                return Ok(());
-            }
-        };
-        let request = match request {
-            Ok(request) => request,
-            Err(e) => {
-                write!(self.connection, "<REQUEST NOT VALID UTF-8: {}>", e)?;
-                return Ok(());
-            },
-        };
-        let mut output = io::BufWriter::new(&self.connection);
-        write!(output, "<response to {:?}>", request)?;
+        }
+    }
+
+    fn read_request(&mut self) -> Res<Result<jrpc::Request, jrpc::Error>> {
+        fn error_serde_to_jrpc(e: serde_json::Error) -> jrpc::Error {
+            let code = match e.classify() {
+                serde_json::error::Category::Data => {
+                    jrpc::ErrorCode::InvalidRequest
+                },
+                serde_json::error::Category::Eof |
+                serde_json::error::Category::Io |
+                serde_json::error::Category::Syntax => {
+                    jrpc::ErrorCode::ParseError
+                },
+            };
+            let message = code.description();
+            let data = Some(format!("{}", e).into());
+            jrpc::Error { code, message, data }
+        }
+
+        let mut reader = io::BufReader::new(&mut self.connection);
+        let mut de = serde_json::Deserializer::from_reader(&mut reader);
+        Ok(
+            jrpc::Request::deserialize(&mut de).map_err(error_serde_to_jrpc)
+        )
+    }
+
+    fn write_response(&self, response: &jrpc::Response) -> Res<()> {
+        let mut writer = io::BufWriter::new(&self.connection);
+        {
+            let mut ser = serde_json::Serializer::new(&mut writer);
+            // NOTE: [expect] This should never happen
+            response.serialize(&mut ser)
+                .expect("response serialization error");
+        }
+        // NOTE: Explicit flush because the destructor does not check for
+        // errors.
+        writer.flush()?;
         Ok(())
     }
 }

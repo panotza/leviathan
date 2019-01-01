@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate clap;
+extern crate jsonrpc_core;
 extern crate libc;
+extern crate serde;
+extern crate serde_json;
 extern crate xdg;
 
 mod c;
@@ -10,10 +13,14 @@ mod request;
 
 use error::{Error, Res};
 use init_system as is;
+use jsonrpc_core as jrpc;
 use std::{ffi, fmt, fs, io, path, process};
 use std::io::prelude::*;
 use std::os::unix::net as unet;
 use std::str::FromStr;
+
+const JRPC_COMPATIBILITY: jrpc::Compatibility = jrpc::Compatibility::V2;
+const JRPC_VERSION: Option<jrpc::Version> = Some(jrpc::Version::V2);
 
 fn main() {
     process::exit(match run() {
@@ -96,7 +103,10 @@ fn run() -> Res<()> {
     let program_dir = ProgramDir::acquire()?;
     let socket_file = init_system.socket_file(&program_dir)?;
     println!("socket_file: {:?}", socket_file);
-    let mut listener = request::RequestListener::new(&socket_file.listener);
+    // TODO: Implement the actual handling of methods by the handler.
+    let rpc_handler = jrpc::IoHandler::with_compatibility(JRPC_COMPATIBILITY);
+    let mut listener
+        = request::RequestListener::new(&socket_file.listener, &rpc_handler);
 
     println!("startup complete");
     init_system.notify().startup_end()?;

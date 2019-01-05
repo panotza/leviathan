@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate clap;
 extern crate jsonrpc_core;
+#[macro_use]
+extern crate lazy_static;
 extern crate libc;
 extern crate serde;
 extern crate serde_json;
@@ -10,6 +12,7 @@ mod c;
 mod error;
 mod init_system;
 mod request;
+mod updater;
 
 use error::{Error, Res};
 use init_system as is;
@@ -103,10 +106,11 @@ fn run() -> Res<()> {
     let program_dir = ProgramDir::acquire()?;
     let socket_file = init_system.socket_file(&program_dir)?;
     println!("socket_file: {:?}", socket_file);
-    // TODO: Implement the actual handling of methods by the handler.
-    let rpc_handler = jrpc::IoHandler::with_compatibility(JRPC_COMPATIBILITY);
-    let mut listener
-        = request::RequestListener::new(&socket_file.listener, &rpc_handler);
+
+    // NOTE: [unwrap] Forward panic.
+    let rpc_handler = updater::rpc_handler().read().unwrap();
+    let mut listener = request::RequestListener::new(&socket_file.listener,
+                                                     &*rpc_handler);
 
     println!("startup complete");
     init_system.notify().startup_end()?;

@@ -171,7 +171,9 @@ pub fn getgrnam_r(name: &ffi::CStr) -> Result<Option<GetgrGroup>, Errno> {
 
 pub struct GetgrGroup {
     group: libc::group,
-    buffer: Box<[libc::c_char]>,
+    // NOTE: The buffer stores the string fields of `group`, so we must retain
+    // ownership of it as long as we have ownership of `group`.
+    _buffer: Box<[libc::c_char]>,
 }
 
 impl GetgrGroup {
@@ -217,7 +219,7 @@ impl GetgrGroup {
 
         Ok(Some(Self {
             group,
-            buffer: buffer.into_boxed_slice(),
+            _buffer: buffer.into_boxed_slice(),
         }))
     }
 

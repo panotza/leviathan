@@ -4,6 +4,10 @@
 
   - [ ] Definition of the procedures.
 
+- [ ] Code formatting (cargo fmt)
+
+  - [ ] Linting (cargo clippy)
+
 - [ ] If SIGTERM is received, shut down the daemon and exit cleanly.
 
 - [ ] If SIGHUP is received, reload the configuration files, if this applies.
@@ -19,3 +23,5 @@
   - [ ] Instead of using the syslog() call to log directly to the system syslog service, a new-style daemon may choose to simply log to standard error via fprintf(), which is then forwarded to syslog by the init system.  If log levels are necessary, these can be encoded by prefixing individual log lines with strings like "<4>" (for log level 4 "WARNING" in the syslog priority scheme), following a similar style as the Linux kernel's printk() level system.  For details, see sd-daemon(3) and systemd.exec(5).
 
 - [ ] ? sub error types which automatically convert into the supertype ?
+
+- [ ] Only forward unrecoverable errors everywhere.  Make the program as robust to errors as possible, since this is a daemon.

@@ -107,10 +107,9 @@ fn run() -> Res<()> {
     let socket_file = init_system.socket_file(&program_dir)?;
     println!("socket_file: {:?}", socket_file);
 
-    // NOTE: [unwrap] Forward panic.
-    let rpc_handler = updater::rpc_handler().read().unwrap();
+    let rpc_handler = updater::rpc_handler();
     let mut listener = request::RequestListener::new(&socket_file.listener,
-                                                     &*rpc_handler);
+                                                     rpc_handler);
 
     println!("startup complete");
     init_system.notify().startup_end()?;

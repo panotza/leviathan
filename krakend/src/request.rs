@@ -5,7 +5,7 @@ use jrpc::futures::Future;
 use jsonrpc_core as jrpc;
 use serde_json;
 use serde::{Deserialize, Serialize};
-use std::{io, time};
+use std::{io, sync, time};
 use std::io::prelude::*;
 use std::os::unix::net as unet;
 
@@ -14,12 +14,12 @@ use JRPC_VERSION;
 /// Queue of request connections, read from a socket listener.
 pub struct RequestListener<'h, 'l> {
     listener: &'l unet::UnixListener,
-    rpc_handler: &'h jrpc::IoHandler,
+    rpc_handler: &'h sync::RwLock<jrpc::IoHandler>,
 }
 
 impl<'h, 'l> RequestListener<'h, 'l> {
     pub fn new(listener: &'l unet::UnixListener,
-               rpc_handler: &'h jrpc::IoHandler) -> Self {
+               rpc_handler: &'h sync::RwLock<jrpc::IoHandler>) -> Self {
         Self {
             listener,
             rpc_handler,
@@ -57,7 +57,7 @@ impl<'h, 'l> Iterator for RequestListener<'h, 'l> {
 /// Unread and unexecuted request(s) with its open socket connection.
 pub struct RequestConnection<'h> {
     connection: unet::UnixStream,
-    rpc_handler: &'h jrpc::IoHandler,
+    rpc_handler: &'h sync::RwLock<jrpc::IoHandler>,
 }
 
 impl<'h> RequestConnection<'h> {
@@ -73,9 +73,13 @@ impl<'h> RequestConnection<'h> {
             },
         };
 
-        // NOTE: [expect] This should never happen
-        let response = self.rpc_handler.handle_rpc_request(request).wait()
-            .expect("handler call error");
+        let response = {
+            // NOTE: [unwrap] Forward panic.
+            let rpc_handler = self.rpc_handler.read().unwrap();
+            // NOTE: [expect] This should never happen.
+            rpc_handler.handle_rpc_request(request).wait()
+                .expect("handler call error")
+        };
         match response {
             Some(response) => {
                 println!("# sending response to method call");

@@ -52,6 +52,8 @@ impl Updater {
                                move |p| self.available_devices(p));
         rpc_handler.add_method("getUpdateInterval",
                                move |p| self.get_update_interval(p));
+        rpc_handler.add_method("setUpdateInterval",
+                               move |p| self.set_update_interval(p));
 
         // NOTE: [unwrap] Forward panic.
         let mut methods_added = self.methods_added.write().unwrap();
@@ -150,6 +152,49 @@ impl Updater {
         Ok(device.get_attribute_unrestricted("update_interval")?)
     }
 
+    fn set_update_interval(&self, params: jrpc::Params) -> JrpcFutureResult {
+        let params = match params {
+            jrpc::Params::Map(map) => map,
+            _ => return Error::ParamsType.into_future(),
+        };
+        let mut device = None;
+        let mut update_interval = None;
+        for (key, value) in params.into_iter() {
+            match key.as_str() {
+                "device" => device = Some(value),
+                "update_interval" => match value {
+                    jrpc::Value::Number(interval) => match interval.as_u64() {
+                        Some(interval) => update_interval = Some(interval),
+                        None => {
+                            return Error::params_key_type(key).into_future()
+                        },
+                    },
+                    _ => return Error::params_key_type(key).into_future(),
+                },
+                _ => return Error::params_key_unexpected(key).into_future(),
+            };
+        }
+        let device = match self.params_device(device) {
+            Ok(device) => device,
+            Err(e) => return e.into_future(),
+        };
+        let update_interval = match update_interval {
+            Some(interval) => interval,
+            None => {
+                return Error::params_key_type("update_interval").into_future();
+            },
+        };
+        self.set_update_interval_impl(device, update_interval)
+            .map(|_| jrpc::Value::Null)
+            .into()
+    }
+
+    fn set_update_interval_impl(&self, device: Device, update_interval: u64)
+                                -> jrpc::Result<()> {
+        Ok(device.set_attribute_unrestricted("update_interval",
+                                             update_interval)?)
+    }
+
     fn params_device(&self, device_map: Option<jrpc::Value>)
                      -> Result<Device, Error> {
         let device_map = match device_map {
@@ -207,6 +252,44 @@ impl Device {
             .trim()
             .parse::<T>()
             .map_err(|e| Error::attribute_read(name, e.to_string()))
+    }
+
+    fn set_attribute_unrestricted<T>(&self, name: &str, value: T)
+                                     -> Result<(), Error>
+    where T: string::ToString,
+    {
+        let path = self.attribute_path(name);
+        let mut file = fs::OpenOptions::new()
+            .create(false).truncate(false).write(true)
+            .open(path)
+            .map_err(|e| Error::device_not_accessible(e.to_string()))?;
+        let contents = value.to_string();
+        loop {
+            match file.write(contents.as_bytes()) {
+                Ok(written) => if written == contents.len() {
+                    return Ok(());
+                } else {
+                    return Err(Error::attribute_write(
+                        name, "failed to write entire value",
+                    ));
+                },
+                Err(e) => match e.kind() {
+                    io::ErrorKind::Interrupted => (),
+                    io::ErrorKind::InvalidInput => {
+                        return Err(Error::attribute_einval(name));
+                    },
+                    _ => {
+                        return Err(Error::attribute_write(name, e.to_string()));
+                    },
+                },
+            };
+        }
+    }
+
+    fn attribute_path(&self, name: &str) -> path::PathBuf {
+        let mut path = self.attributes_dir();
+        path.push(name);
+        path
     }
 
     fn attributes_dir(&self) -> path::PathBuf {
@@ -283,7 +366,9 @@ impl From<Device> for serde_json::Map<String, jrpc::Value> {
 
 /// Errors specific to this module.
 enum Error {
+    AttributeEinval { attribute: String },
     AttributeRead { attribute: String, data: String },
+    AttributeWrite { attribute: String, data: String },
     DeviceNotAccessible { data: String },
     DriverNotSupported,
     ParamsDeviceFormat,
@@ -294,10 +379,25 @@ enum Error {
 }
 
 impl Error {
+    fn attribute_einval<S>(attribute: S) -> Self
+    where S: Into<String>,
+    {
+        Error::AttributeEinval { attribute: attribute.into() }
+    }
+
     fn attribute_read<S, T>(attribute: S, data: T) -> Self
     where S: Into<String>, T: Into<String>,
     {
         Error::AttributeRead {
+            attribute: attribute.into(),
+            data: data.into(),
+        }
+    }
+
+    fn attribute_write<S, T>(attribute: S, data: T) -> Self
+    where S: Into<String>, T: Into<String>,
+    {
+        Error::AttributeWrite {
             attribute: attribute.into(),
             data: data.into(),
         }
@@ -325,10 +425,22 @@ impl Error {
 impl From<Error> for jrpc::Error {
     fn from(error: Error) -> Self {
         match error {
+            Error::AttributeEinval { attribute } => jrpc::Error {
+                code: 4.into(),
+                data: None,
+                message: format!(
+                    "Wrote invalid value to attribute {:?} (EINVAL)", attribute,
+                ),
+            },
             Error::AttributeRead { attribute, data } => jrpc::Error {
                 code: 1.into(),
                 data: Some(data.into()),
                 message: format!("Failed to read attribute {:?}", attribute),
+            },
+            Error::AttributeWrite { attribute, data } => jrpc::Error {
+                code: 3.into(),
+                data: Some(data.into()),
+                message: format!("Failed to write attribute {:?}", attribute),
             },
             Error::DeviceNotAccessible { data } => jrpc::Error {
                 code: 2.into(),

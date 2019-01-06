@@ -2,7 +2,7 @@
 
 use jsonrpc_core::futures::future::{self, IntoFuture};
 use jsonrpc_core as jrpc;
-use std::ops::Deref;
+use serde_json;
 use std::{fs, path, sync};
 
 use JRPC_COMPATIBILITY;
@@ -11,7 +11,6 @@ type JrpcFutureResult = future::FutureResult<jrpc::Value, jrpc::Error>;
 
 const DRIVERS_SUPPORTED: [&'static str; 2] = ["kraken", "kraken_x62"];
 const DRIVERS_DIR: &'static str = "/sys/bus/usb/drivers";
-const ATTRIBUTES_DIR: &'static str = "kraken";
 
 lazy_static!{
     static ref UPDATER: Updater = Updater::new();
@@ -25,7 +24,6 @@ pub fn rpc_handler() -> &'static sync::RwLock<jrpc::IoHandler> {
 struct Updater {
     rpc_handler: sync::RwLock<jrpc::IoHandler>,
     methods_added: sync::RwLock<bool>,
-    device: sync::RwLock<Option<Device>>,
 }
 
 impl Updater {
@@ -35,7 +33,6 @@ impl Updater {
         Self {
             rpc_handler: rpc_handler.into(),
             methods_added: false.into(),
-            device: None.into(),
         }
     }
 
@@ -52,10 +49,8 @@ impl Updater {
         let mut rpc_handler = self.rpc_handler.write().unwrap();
         rpc_handler.add_method("availableDevices",
                                move |p| self.available_devices(p));
-        rpc_handler.add_method("managedDevice",
-                               move |p| self.managed_device(p));
-        rpc_handler.add_method("setManagedDevice",
-                               move |p| self.set_managed_device(p));
+        rpc_handler.add_method("getUpdateInterval",
+                               move |p| self.get_update_interval(p));
 
         // NOTE: [unwrap] Forward panic.
         let mut methods_added = self.methods_added.write().unwrap();
@@ -63,9 +58,9 @@ impl Updater {
     }
 
     fn available_devices(&self, params: jrpc::Params) -> JrpcFutureResult {
-        if let jrpc::Params::None = params {
-        } else {
-            return Error::ParamsNotNone.into_future();
+        match params {
+            jrpc::Params::None => (),
+            _ => return Error::ParamsType.into_future(),
         };
         self.available_devices_impl().map(|v| v.into()).into()
     }
@@ -124,120 +119,43 @@ impl Updater {
                     eprintln!("warn: device file {:?} is not directory", path);
                     continue;
                 }
-                let mut device_map = serde_json::Map::new();
-                device_map.insert("driver".into(), driver.into());
-                device_map.insert("device".into(), file_name.into());
-                devices.push(device_map);
+                devices.push(Device::new(driver, file_name).into());
             }
         }
 
         Ok(devices)
     }
 
-    fn managed_device(&self, params: jrpc::Params) -> JrpcFutureResult {
-        if let jrpc::Params::None = params {
-        } else {
-            return Error::ParamsNotNone.into_future();
-        }
-        self.managed_device_impl()
-            .map(|v| match v {
-                Some(map) => map.into(),
-                None => jrpc::Value::Null,
-            })
-            .into()
-    }
-
-    fn managed_device_impl(
-        &self
-    ) -> jrpc::Result<Option<serde_json::Map<String, jrpc::Value>>>
-    {
-        // NOTE: [unwrap] Forward panic.
-        let device = self.device.read().unwrap();
-        match device.deref() {
-            Some(device) => {
-                let mut map = serde_json::Map::new();
-                map.insert("driver".into(), device.driver.clone().into());
-                map.insert("device".into(), device.device.clone().into());
-                Ok(Some(map))
-            },
-            None => Ok(None),
-        }
-    }
-
-    fn set_managed_device(&self, params: jrpc::Params) -> JrpcFutureResult {
-        let params = if let jrpc::Params::Map(map) = params {
-            map
-        } else {
-            return Error::ParamsNotObject.into_future();
+    fn get_update_interval(&self, params: jrpc::Params) -> JrpcFutureResult {
+        let params = match params {
+            jrpc::Params::Map(map) => map,
+            _ => return Error::ParamsType.into_future(),
         };
-
         let mut device = None;
-        let mut driver = None;
         for (key, value) in params.into_iter() {
             match key.as_str() {
-                "device" => match value {
-                    jrpc::Value::String(s) => device = Some(s),
-                    _ => {
-                        return Error::params_key_type(key.clone(), "string")
-                            .into_future();
-                    },
-                },
-                "driver" => match value {
-                    jrpc::Value::String(s) => driver = Some(s),
-                    _ => {
-                        return Error::params_key_type(key.clone(), "string")
-                            .into_future();
-                    },
-                },
-                _ => {
-                    return Error::ParamsKeyUnknown(key.clone()).into_future();
-                },
+                "device" => device = Some(value),
+                _ => return Error::params_key_unexpected(key).into_future(),
             };
         }
-        let device_name = match device {
-            Some(device) => device,
-            None => {
-                return Error::ParamsKeyNotPresent("device").into_future();
-            },
+        let device = match self.params_device(device) {
+            Ok(device) => device,
+            Err(e) => return e.into_future(),
         };
-        let driver_name = match driver {
-            Some(driver) => driver,
-            None => {
-                return Error::ParamsKeyNotPresent("driver").into_future();
-            },
-        };
-
-        self.set_managed_device_impl(&driver_name, &device_name)
-            .map(|_| jrpc::Value::Null)
-            .into()
+        self.get_update_interval_impl(device).map(|v| v.into()).into()
     }
 
-    fn set_managed_device_impl(&self, driver_name: &str, device_name: &str)
-                               -> jrpc::Result<()> {
-        if !DRIVERS_SUPPORTED.contains(&driver_name) {
-            return Err(Error::DriverNotSupported.into());
-        }
-        let device_filename = match path::Path::new(device_name).file_name() {
-            Some(s) => match s.to_str() {
-                Some(s) => s,
-                None => return Err(Error::DeviceNameInvalid.into()),
-            },
-            None => return Err(Error::DeviceNameInvalid.into()),
-        };
-        if device_name != device_filename {
-            return Err(Error::DeviceNameInvalid.into());
-        }
-        let device_name = device_filename;
+    fn get_update_interval_impl(&self, device: Device) -> jrpc::Result<u64> {
+        Ok(device.get_attribute_unrestricted("update_interval")?)
+    }
 
-        // NOTE: [unwrap] Forward panic.
-        let mut device = self.device.write().unwrap();
-        *device = Some(Device {
-            driver: driver_name.into(),
-            device: device_name.into()
-        });
-        println!("info: managing  driver {:?}, device {:?}",
-                 driver_name, device_name);
-        Ok(())
+    fn params_device(&self, device_map: Option<jrpc::Value>)
+                     -> Result<Device, Error> {
+        let device_map = match device_map {
+            Some(value) => value,
+            None => return Err(Error::params_key_type("device")),
+        };
+        Device::try_from(device_map)
     }
 }
 
@@ -248,7 +166,38 @@ struct Device {
 }
 
 impl Device {
+    fn new<S, T>(driver: S, device: T) -> Self
+    where S: Into<String>, T: Into<String>,
+    {
+        Self {
+            driver: driver.into(),
+            device: device.into(),
+        }
+    }
+
+    fn get_attribute_unrestricted<T>(&self, name: &str) -> Result<T, Error>
+    where T: std::str::FromStr,
+    <T as std::str::FromStr>::Err: ToString,
+    {
+        let path = {
+            let mut path = self.attributes_dir();
+            path.push(name);
+            path
+        };
+        let contents = match fs::read(path) {
+            Ok(contents) => contents,
+            Err(e) => return Err(Error::device_not_accessible(e.to_string())),
+        };
+        String::from_utf8(contents)
+            .map_err(|e| Error::attribute_read(name, e.to_string()))?
+            .trim()
+            .parse::<T>()
+            .map_err(|e| Error::attribute_read(name, e.to_string()))
+    }
+
     fn attributes_dir(&self) -> path::PathBuf {
+        const ATTRIBUTES_DIR: &'static str = "kraken";
+
         let mut dir = path::PathBuf::from(DRIVERS_DIR);
         dir.push(&self.driver);
         dir.push(&self.device);
@@ -257,52 +206,144 @@ impl Device {
     }
 }
 
+// LATER: Switch to TryFrom<jrpc::Value> when stable.
+impl Device {
+    fn try_from(value: jrpc::Value) -> Result<Self, Error> {
+        let device_map = match value {
+            jrpc::Value::Object(map) => map,
+            _ => return Err(Error::ParamsDeviceFormat),
+        };
+
+        let mut device = None;
+        let mut driver = None;
+        for (key, value) in device_map.into_iter() {
+            match key.as_str() {
+                "device" => match value {
+                    jrpc::Value::String(s) => device = Some(s),
+                    _ => return Err(Error::ParamsDeviceFormat),
+                },
+                "driver" => match value {
+                    jrpc::Value::String(s) => driver = Some(s),
+                    _ => return Err(Error::ParamsDeviceFormat),
+                },
+                _ => return Err(Error::ParamsDeviceFormat),
+            };
+        }
+        let device = match device {
+            Some(device) => device,
+            None => return Err(Error::ParamsDeviceFormat),
+        };
+        let driver = match driver {
+            Some(driver) => driver,
+            None => return Err(Error::ParamsDeviceFormat),
+        };
+
+        if !DRIVERS_SUPPORTED.contains(&driver.as_str()) {
+            return Err(Error::DriverNotSupported);
+        }
+        let device_filename = match path::Path::new(&device).file_name() {
+            Some(s) => match s.to_str() {
+                Some(s) => s,
+                None => return Err(Error::ParamsDeviceName),
+            },
+            None => return Err(Error::ParamsDeviceName),
+        };
+        if device != device_filename {
+            return Err(Error::ParamsDeviceName);
+        }
+        let device = device_filename.to_string();
+
+        let driver = driver.clone();
+        Ok(Self { driver, device })
+    }
+}
+
+impl From<Device> for serde_json::Map<String, jrpc::Value> {
+    fn from(device: Device) -> Self {
+        let mut map = Self::new();
+        map.insert("driver".into(), device.driver.into());
+        map.insert("device".into(), device.device.into());
+        map
+    }
+}
+
 /// Errors specific to this module.
 enum Error {
-    DeviceNameInvalid,
+    AttributeRead { attribute: String, data: String },
+    DeviceNotAccessible { data: String },
     DriverNotSupported,
-    ParamsKeyNotPresent(&'static str),
-    ParamsKeyType { key: String, type_: &'static str },
-    ParamsKeyUnknown(String),
-    ParamsNotNone,
-    ParamsNotObject,
+    ParamsDeviceFormat,
+    ParamsDeviceName,
+    ParamsKeyType { key: String },
+    ParamsKeyUnexpected { key: String },
+    ParamsType,
 }
 
 impl Error {
-    fn params_key_type(key: String, type_: &'static str) -> Self {
-        Error::ParamsKeyType { key, type_ }
+    fn attribute_read<S, T>(attribute: S, data: T) -> Self
+    where S: Into<String>, T: Into<String>,
+    {
+        Error::AttributeRead {
+            attribute: attribute.into(),
+            data: data.into(),
+        }
+    }
+
+    fn device_not_accessible<S>(data: S) -> Self
+    where S: Into<String>,
+    {
+        Error::DeviceNotAccessible { data: data.into() }
+    }
+
+    fn params_key_type<S>(key: S) -> Self
+    where S: Into<String>,
+    {
+        Error::ParamsKeyType { key: key.into() }
+    }
+
+    fn params_key_unexpected<S>(key: S) -> Self
+    where S: Into<String>,
+    {
+        Error::ParamsKeyUnexpected { key: key.into() }
     }
 }
 
 impl From<Error> for jrpc::Error {
     fn from(error: Error) -> Self {
         match error {
-            Error::DeviceNameInvalid => jrpc::Error::invalid_params(
+            Error::AttributeRead { attribute, data } => jrpc::Error {
+                code: 1.into(),
+                data: Some(data.into()),
+                message: format!("Failed to read attribute {:?}", attribute),
+            },
+            Error::DeviceNotAccessible { data } => jrpc::Error {
+                code: 2.into(),
+                data: Some(data.into()),
+                message: "Device not accessible".into(),
+            },
+            Error::DriverNotSupported => jrpc::Error {
+                code: 0.into(),
+                data: None,
+                message: "Driver not supported".into(),
+            },
+            Error::ParamsDeviceFormat => jrpc::Error::invalid_params(
+                "Device format is invalid",
+            ),
+            Error::ParamsDeviceName => jrpc::Error::invalid_params(
                 "Device name is invalid",
             ),
-            Error::DriverNotSupported => jrpc::Error::invalid_params(
-                "Driver not supported",
-            ),
-            Error::ParamsKeyNotPresent(key) => {
+            Error::ParamsKeyType { key } => {
                 jrpc::Error::invalid_params(format!(
-                    "Expected key {:?} not present", key,
+                    "Key {:?} is not of expected type", key,
                 ))
             },
-            Error::ParamsKeyType { key, type_ } => {
+            Error::ParamsKeyUnexpected { key } => {
                 jrpc::Error::invalid_params(format!(
-                    "Value of key {:?} is not of type {}", key, type_,
+                    "Key {:?} not expected", key,
                 ))
             },
-            Error::ParamsKeyUnknown(key) => {
-                jrpc::Error::invalid_params(format!(
-                    "Unexpected key {:?} present", key,
-                ))
-            },
-            Error::ParamsNotNone => jrpc::Error::invalid_params(
-                "Unexpected params present",
-            ),
-            Error::ParamsNotObject => jrpc::Error::invalid_params(
-                "Params is not of type object",
+            Error::ParamsType => jrpc::Error::invalid_params(
+                "Params is not of expected type",
             ),
         }
     }

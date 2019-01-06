@@ -3,7 +3,8 @@
 use jsonrpc_core::futures::future::{self, IntoFuture};
 use jsonrpc_core as jrpc;
 use serde_json;
-use std::{fs, path, sync};
+use std::{fs, io, path, string, sync};
+use std::io::prelude::*;
 
 use JRPC_COMPATIBILITY;
 
@@ -179,15 +180,28 @@ impl Device {
     where T: std::str::FromStr,
     <T as std::str::FromStr>::Err: ToString,
     {
-        let path = {
-            let mut path = self.attributes_dir();
-            path.push(name);
-            path
-        };
-        let contents = match fs::read(path) {
-            Ok(contents) => contents,
-            Err(e) => return Err(Error::device_not_accessible(e.to_string())),
-        };
+        let path = self.attribute_path(name);
+        let mut file = fs::OpenOptions::new().read(true)
+            .open(path)
+            .map_err(|e| Error::device_not_accessible(e.to_string()))?;
+
+        eprintln!("debug: PAGE_SIZE = {}", page_size::get());
+        let mut contents = vec![0u8; page_size::get()];
+        let contents_read;
+        loop {
+            match file.read(contents.as_mut_slice()) {
+                Ok(read) => {
+                    contents_read = read;
+                    break;
+                },
+                Err(e) => match e.kind() {
+                    io::ErrorKind::Interrupted => (),
+                    _ => return Err(Error::attribute_read(name, e.to_string())),
+                },
+            };
+        }
+        contents.truncate(contents_read);
+
         String::from_utf8(contents)
             .map_err(|e| Error::attribute_read(name, e.to_string()))?
             .trim()

@@ -4,6 +4,7 @@ extern crate jsonrpc_core;
 #[macro_use]
 extern crate lazy_static;
 extern crate libc;
+extern crate page_size;
 extern crate serde;
 extern crate serde_json;
 extern crate xdg;
